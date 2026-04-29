@@ -1,4 +1,4 @@
-use std::{error::Error, fs, io::{self, Write}, vec};
+use std::{error::Error, fs, io::{self, Write}, process::exit, vec};
 
 fn main() -> Result<(), Box<dyn Error>>{
     let args: Vec<String> = std::env::args().collect();
@@ -14,6 +14,8 @@ fn main() -> Result<(), Box<dyn Error>>{
             let tokens = tokenize(input.clone());
             if let Err(e) = parse(tokens, &mut stack){
                 eprintln!("ERROR: {e}")
+            } else {
+                println!("stack: {:?}", stack);
             }
 
             input.clear();
@@ -22,7 +24,11 @@ fn main() -> Result<(), Box<dyn Error>>{
         let content = fs::read_to_string(args[1].clone())?;
         let tokens = tokenize(content);
         let mut stack : Vec<i32> = vec![];
-        parse(tokens, &mut stack)?;
+        if let Err(e) = parse(tokens, &mut stack){
+            eprintln!("ERROR: {e}")
+        } else {
+            println!("stack: {:?}", stack);
+        }
 
         if !stack.is_empty(){
             println!("warning: trailing number still in the stack: {:?}", stack);
@@ -35,20 +41,15 @@ fn main() -> Result<(), Box<dyn Error>>{
 
 #[derive(Debug, Clone)]
 enum Token{
-    Number(i32),
-    Operator(Ops),
-    Sig,
-    Pop,
-    PS,
-    Unknown
-}
-
-#[derive(Debug, Clone)]
-enum Ops{
+    Push(i32),
     Add,
-    Subtract,
-    Multiply,
-    Divide,
+    Sub,
+    Mul,
+    Div,
+    Minus,
+    Pop,
+    Dup,
+    Unknown
 }
 
 #[derive(Debug, Clone)]
@@ -74,17 +75,21 @@ fn tokenize(content : String) -> Vec<Token>{
     content
         .split_whitespace()
         .map(|x| match x{
-            "+" => Token::Operator(Ops::Add),
-            "-" => Token::Operator(Ops::Subtract),
-            "*" => Token::Operator(Ops::Multiply),
-            "/" => Token::Operator(Ops::Divide),
-            "sig" => Token::Sig,
+            "add" => Token::Add,
+            "sub" => Token::Sub,
+            "mul" => Token::Mul,
+            "div" => Token::Div,
+            "sig" => Token::Minus,
             "pop" => Token::Pop,
-            "ps" => Token::PS,
+            "dup" => Token::Dup,
+            "quit" => {
+                println!("Exiting program...");
+                exit(0);
+            },
             _ => {
                 let num = x.parse::<i32>();
                 match num {
-                    Ok(num) => Token::Number(num),
+                    Ok(num) => Token::Push(num),
                     Err(_num) => Token::Unknown,
                 }
             }    
@@ -96,35 +101,33 @@ fn parse(tokens : Vec<Token>, stack : &mut Vec<i32>) -> Result<(), Box<dyn Error
     for tk in &tokens{
         match tk {
             Token::Unknown => return Err(LangError::ParsingUnknown.into()),
-            Token::Number(num) => stack.push(*num),
-            Token::Operator(op) => {
-                match op {
-                    Ops::Add => {
-                        if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
-                            stack.push(a + b);
-                        } else {
-                            return Err(LangError::UnsufficientValues("add").into());
-                        }
-                    }
-                    Ops::Multiply =>{
-                        if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
-                            stack.push(a * b);
-                        } else {
-                            return Err(LangError::UnsufficientValues("multiply").into());
-                        }
-                    }
-                    Ops::Subtract =>{
-                        if stack.len() != 2 {return Err(LangError::UnsufficientValues("subtract").into());}
-                        let result = stack[0] - stack[1];
-                        stack.clear();
-                        stack.push(result);
-                    }
-                    Ops::Divide =>{
-                        if stack.len() != 2 {return Err(LangError::UnsufficientValues("divide").into());}
-                        let result = stack[0] / stack[1];
-                        stack.clear();
-                        stack.push(result);
-                    }
+            Token::Push(num) => stack.push(*num),
+            Token::Add => {
+                if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
+                    stack.push(a + b);
+                } else {
+                    return Err(LangError::UnsufficientValues("add").into());
+                }
+            }
+            Token::Mul =>{
+                if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
+                    stack.push(a * b);
+                } else {
+                    return Err(LangError::UnsufficientValues("multiply").into());
+                }
+            }
+            Token::Sub =>{
+                if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
+                    stack.push(a - b);
+                } else {
+                    return Err(LangError::UnsufficientValues("subtract").into());
+                }
+            }
+            Token::Div =>{
+                if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
+                    stack.push(a / b);
+                } else {
+                    return Err(LangError::UnsufficientValues("divide").into());
                 }
             }
             Token::Pop => {
@@ -134,15 +137,19 @@ fn parse(tokens : Vec<Token>, stack : &mut Vec<i32>) -> Result<(), Box<dyn Error
                     None => return Err(LangError::StackEmpty.into())
                 }
             }
-            Token::PS => {
-                println!("stack: {:?}", stack)
-            }
-            Token::Sig => {
+            Token::Minus => {
                 if let Some(n) = stack.pop(){
                     stack.push(-n);
                 } else {
-                    return Err(LangError::UnsufficientValues("sig").into());
+                    return Err(LangError::UnsufficientValues("Minus").into());
                 }
+            }
+            Token::Dup => {
+                if stack.is_empty() { 
+                    return Err(LangError::UnsufficientValues("Dup").into());
+                }
+
+                stack.push(stack[stack.len() - 1])
             }
         }
     }
