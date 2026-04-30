@@ -1,7 +1,6 @@
-1
-2
+push 1
+push 2
 add
 dup
 mul
-pop
 pop
