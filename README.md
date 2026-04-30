@@ -1,5 +1,5 @@
 # SLUR
-## Stack based
-## Lang-
-## Uage in
-## Rust
+**S**tack based\
+**L**ang-\
+**U**age in\
+**R**ust
