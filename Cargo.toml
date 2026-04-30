@@ -2,5 +2,7 @@
 name = "s-lang"
 version = "0.1.0"
 edition = "2024"
+[features]
+token-logging = []
 
 [dependencies]

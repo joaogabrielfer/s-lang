@@ -4,3 +4,4 @@ add
 dup
 mul
 pop
+var a
