@@ -3,5 +3,11 @@ push 2
 add
 dup
 mul
-pop
+into
 var a
+push 3
+push 4
+add
+push a
+sub
+pop

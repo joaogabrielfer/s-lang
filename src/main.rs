@@ -64,6 +64,7 @@ enum Token{
     Pop,
     Dup,
     Var,
+    Into,
     Str(String),
 }
 
@@ -110,6 +111,7 @@ fn tokenize(content: String) -> Vec<Token> {
             "pop"  => Token::Pop,
             "dup"  => Token::Dup,
             "var"  => Token::Var,
+            "into"  => Token::Into,
             "quit" => {
                 println!("Exiting program...");
                 exit(0);
@@ -134,17 +136,17 @@ fn parse(tokens: Vec<Token>, stack: &mut Vec<i32>, variables: &mut HashMap<Strin
             Token::Push => {
                 let next_token = iter.next();
                 match next_token{
-                    Some(tk) => match tk{
-                        Token::Number(n) => {
-                            stack.push(*n);
+                    Some(Token::Number(n)) => stack.push(*n),
+                    Some(Token::Str(s)) => {
+                        if variables.contains_key(s){
+                            stack.push(variables.remove(s).unwrap_or_else(|| unreachable!("variables.remove(s)")));
+                        } else {
+                            return Err(LangError::UndeclaredVar(s.to_string()).into());
                         }
-                        _ => return Err(LangError::UnexpectedToken {
+                    }
+                    other => return Err(LangError::UnexpectedToken {
                         exp: "Number".to_string(),
-                        unexp: "None".to_string(),
-                    }.into())                    }
-                    None => return Err(LangError::UnexpectedToken {
-                        exp: "Number".to_string(),
-                        unexp: format!("{:?}", tk)
+                        unexp: format!("{:?}", other),
                     }.into())
                 };
             }
@@ -198,35 +200,60 @@ fn parse(tokens: Vec<Token>, stack: &mut Vec<i32>, variables: &mut HashMap<Strin
                 stack.push(stack[stack.len() - 1])
             }
             Token::Number(num) => return Err(LangError::InvalidToken(Token::Number(*num)).into()),
+            Token::Str(s) => return Err(LangError::InvalidToken(Token::Str(s.to_string())).into()),
             Token::Var => {
                 let next_token = iter.next();
-                match next_token{
-                    Some(tk) => match tk{
-                        Token::Str(s) => {
-                            if variables.contains_key(s){
-                                return Err(LangError::RedeclarationVar(s.clone()).into());
-                            }
-                            variables.insert(s.clone(), 0)
-                        }
-                        _ => return Err(LangError::UnexpectedToken {
-                        exp: "Str".to_string(),
-                        unexp: "None".to_string(),
-                    }.into())                    }
-                    None => return Err(LangError::UnexpectedToken {
-                        exp: "Str".to_string(),
-                        unexp: format!("{:?}", tk)
-                    }.into())
-                };
+                parse_var(next_token, variables)?;
             }
-            Token::Str(s) => {
-                if variables.contains_key(s){
-                    stack.push(variables[s]);
-                } else {
-                    return Err(LangError::UndeclaredVar(s.to_string()).into())
-                }
+            Token::Into => {
+                let next_keyword = iter.next();
+                let var_name: String = {
+                    match next_keyword {
+                        Some(Token::Var) => {
+                            let str_next = iter.next();
+                            parse_var(str_next, variables)?;
+                            match str_next{
+                                Some(Token::Str(s)) => s.to_string(),
+                                _ => unreachable!("str_next")
+                            }
+                        },
+                        Some(Token::Str(s)) if variables.contains_key(s) => s.to_string(),
+                        Some(other) => return Err(LangError::UnexpectedToken {
+                            exp: "Var or Str".to_string(),
+                            unexp: format!("{:?}", other)
+                        }.into()),
+                        None => todo!(),
+                    }
+                };
+                match stack.pop(){
+                    Some(n) => variables.insert(var_name, n),
+                    None => return Err(LangError::StackEmpty.into())
+                };
             }
         }
     }
+    Ok(())
+}
+
+fn parse_var(v: Option<&Token>, variables: &mut HashMap<String, i32>) -> Result<(), Box<dyn Error>>{
+    match v{
+        Some(tk) => match tk{
+            Token::Str(s) => {
+                if variables.contains_key(s){
+                    return Err(LangError::RedeclarationVar(s.clone()).into());
+                }
+                variables.insert(s.clone(), 0)
+            }
+            _ => return Err(LangError::UnexpectedToken {
+                exp: "Str".to_string(),
+                unexp: format!("{:?}", v)
+            }.into())
+        }
+        None => return Err(LangError::UnexpectedToken {
+            exp: "Str".to_string(),
+            unexp: "None".to_string(),
+        }.into())
+    };
     Ok(())
 }
 
