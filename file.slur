@@ -1,16 +1,19 @@
-push 20 30
-add
-dup
-eq 50 if {
+push 20 30 dup add
+eq
+push 1 2
+lt
+or
+if {
+	push 50
 	into var a
 } else {
 	push 30
-	sub
 	into var a
 }
 
 dup a
-eq a if {
+eq 50
+if {
 	push a
 	pop
 }

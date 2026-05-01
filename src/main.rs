@@ -28,9 +28,12 @@ fn main() -> Result<(), Box<dyn Error>>{
                     exit(0);
             }
 
-            if let Err(e) = parse(tokens, &mut stack, &mut variables){
+            if let Err(e) = parse(tokens.clone(), &mut stack, &mut variables){
                 eprintln!("ERROR: {e}")
             } else {
+                if tokens[tokens.len() - 1] == Token::Pop{
+                    println!()
+                }
                 println!("stack: {:?}", stack);
             }
 

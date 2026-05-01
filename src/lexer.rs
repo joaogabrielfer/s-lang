@@ -25,6 +25,7 @@ pub enum Token{
     Or,
     BoolLit(bool),
     StrLit(String),
+    VarLit(String),
     NumberLit(i32),
     Quit,
 }
@@ -65,7 +66,13 @@ pub fn tokenize(content: String) -> Vec<Token> {
                 let parse_result = word.parse::<i32>();
                 match parse_result{
                     Ok(num) => Token::NumberLit(num),
-                    Err(_) => Token::StrLit(word.to_string()),
+                    Err(_) => {
+                        if word.starts_with("\"") && word.ends_with("\""){
+                            Token::StrLit(word.to_string())
+                        } else {
+                            Token::VarLit(word.to_string())
+                        }
+                    }
                 }
             }
         };

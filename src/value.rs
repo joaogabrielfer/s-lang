@@ -2,7 +2,7 @@
 pub enum RuntimeValue {
     Int(i32),
     Bool(bool),
-    // String(String),
+    String(String),
 }
 
 impl RuntimeValue {
@@ -10,7 +10,7 @@ impl RuntimeValue {
         match self {
             RuntimeValue::Int(_) => "int",
             RuntimeValue::Bool(_) => "bool",
-            // RuntimeValue::String(_) => "str",
+            RuntimeValue::String(_) => "str",
         }
     }
 }
@@ -29,7 +29,7 @@ impl std::fmt::Display for RuntimeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self{
             RuntimeValue::Int(n) => write!(f, "{n}"),
-            // RuntimeValue::String(s) => write!(f, "\"{s}\""),
+            RuntimeValue::String(s) => write!(f, "{s}"),
             RuntimeValue::Bool(b) => write!(f, "{b}"),
         }
     }

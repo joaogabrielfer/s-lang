@@ -20,19 +20,22 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                 loop {
                     if !is_first {
                         match iter.peek() {
-                            Some(&Token::NumberLit(_)) | Some(&Token::StrLit(_)) => { }
+                            Some(&Token::NumberLit(_)) | Some(&Token::StrLit(_)) | Some(&Token::VarLit(_)) => { }
                             _ => break
                         }
                     }
 
-                    let next_token = iter.next();
-                    match next_token {
+                    match iter.next() {
                         Some(Token::NumberLit(n)) => stack.push(RuntimeValue::Int(*n)),
                         Some(Token::StrLit(s)) => {
+                            let trimmed = s.trim_matches('\"').to_string();
+                            stack.push(RuntimeValue::String(trimmed));
+                        }
+                        Some(Token::VarLit(s)) => {
                             if variables.contains_key(s) {
                                 stack.push(RuntimeValue::Int(variables.remove(s).unwrap_or_else(|| unreachable!("push <var>"))));
                             } else {
-                                return Err(LangError::UndeclaredVar(s.to_string()).into());
+                                   return Err(LangError::UndeclaredVar(s.to_string()).into());
                             }
                         }
                         other => {
@@ -104,7 +107,12 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
             Token::Pop => {
                 let p = stack.pop();
                 match p{
-                    Some(p) => println!("pop: {p}"),
+                    Some(p) => {
+                        match p{
+                            RuntimeValue::String(s) if s == "\\n" => println!(),
+                            _ => print!("{p}"),
+                        }
+                    }
                     None => return Err(LangError::StackEmpty.into())
                 }
             }
@@ -129,7 +137,7 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                 }
             }
             Token::Dup => {
-                if let Some(&Token::StrLit(s)) = iter.peek(){
+                if let Some(&Token::VarLit(s)) = iter.peek(){
                     iter.next();
                     if variables.contains_key(s){
                         stack.push(RuntimeValue::Int(variables[s]));
@@ -162,11 +170,11 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                             let str_next = iter.next();
                             parse_var(str_next, variables)?;
                             match str_next{
-                                Some(Token::StrLit(s)) => s.to_string(),
+                                Some(Token::VarLit(s)) => s.to_string(),
                                 _ => unreachable!("str_next")
                             }
                         },
-                        Some(Token::StrLit(s)) if variables.contains_key(s) => s.to_string(),
+                        Some(Token::VarLit(s)) if variables.contains_key(s) => s.to_string(),
                         Some(other) => return Err(LangError::UnexpectedToken {
                             exp: "Var or Str".to_string(),
                             got: format!("{:?}", other)
@@ -228,7 +236,7 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
 
                         stack.push(RuntimeValue::Bool(a == RuntimeValue::Int(*n_arg)));
                     }
-                    Some(&Token::StrLit(s)) => {
+                    Some(&Token::VarLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
@@ -286,7 +294,7 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                             }.into())
                         }
                     }
-                    Some(&Token::StrLit(s)) => {
+                    Some(&Token::VarLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
@@ -354,7 +362,7 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                             }.into())
                         }
                     }
-                    Some(&Token::StrLit(s)) => {
+                    Some(&Token::VarLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
@@ -499,8 +507,145 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
             Token::Else => return Err(LangError::InvalidToken(Token::Else).into()),
             Token::OpenCurly => { },
             Token::CloseCurly => { },
-            Token::And => todo!(),
-            Token::Or => todo!(),
+            Token::And => {
+                match iter.peek() {
+                    Some(&Token::BoolLit(b_arg)) => {
+                        iter.next();
+
+                        if stack.is_empty() {
+                            return Err(LangError::UnsufficientValues {
+                                op: "and".to_string(),
+                                exp: 1,
+                                got: stack.len()
+                            }.into());
+                        }
+
+                        let a = stack.pop().unwrap_or_else(|| unreachable!("and"));
+
+                        match a {
+                            RuntimeValue::Bool(b_stack) => stack.push(RuntimeValue::Bool(b_stack && *b_arg)),
+                            other => return Err(LangError::UnexpectedType {
+                                exp: RuntimeValue::Int(0),
+                                got: other
+                            }.into())
+                        }
+                    }
+                    // TODO: add support to bool vars
+                    // Some(&Token::VarLit(s)) => {
+                    //     iter.next();
+                    //
+                    //     if stack.is_empty() {
+                    //         return Err(LangError::UnsufficientValues {
+                    //             op: "and".to_string(),
+                    //             exp: 1,
+                    //             got: stack.len()
+                    //         }.into());
+                    //     }
+                    //
+                    //     let a = stack.pop().unwrap_or_else(|| unreachable!("and"));
+                    //
+                    //     if variables.contains_key(s) {
+                    //         stack.push(RuntimeValue::Bool(a < RuntimeValue::Int(variables[s])));
+                    //     } else {
+                    //         return Err(LangError::UndeclaredVar(s.to_string()).into());
+                    //     }
+                    // }
+                    _ => {
+                        if stack.len() < 2 {
+                            return Err(LangError::UnsufficientValues {
+                                op: "and".to_string(),
+                                exp: 2,
+                                got: stack.len()
+                            }.into());
+                        }
+
+                        let b = stack.pop().unwrap_or_else(|| unreachable!("and"));
+                        let a = stack.pop().unwrap_or_else(|| unreachable!("and"));
+
+                        match (a, b) {
+                            (RuntimeValue::Bool(b1), RuntimeValue::Bool(b2)) => {
+                                stack.push(RuntimeValue::Bool(b1 && b2));
+                            }
+                            (type1, type2) => {
+                                return Err(LangError::UnexpectedTypes {
+                                    exp: (RuntimeValue::Bool(false), RuntimeValue::Bool(false)),
+                                    got: (type1, type2)
+                                }.into());
+                            }
+                        }
+                    }
+                }
+            }
+            Token::Or => {
+                match iter.peek() {
+                    Some(&Token::BoolLit(b_arg)) => {
+                        iter.next();
+
+                        if stack.is_empty() {
+                            return Err(LangError::UnsufficientValues {
+                                op: "or".to_string(),
+                                exp: 1,
+                                got: stack.len()
+                            }.into());
+                        }
+
+                        let a = stack.pop().unwrap_or_else(|| unreachable!("or"));
+
+                        match a {
+                            RuntimeValue::Bool(b_stack) => stack.push(RuntimeValue::Bool(b_stack || *b_arg)),
+                            other => return Err(LangError::UnexpectedType {
+                                exp: RuntimeValue::Int(0),
+                                got: other
+                            }.into())
+                        }
+                    }
+                    // TODO: add support to bool vars
+                    // Some(&Token::VarLit(s)) => {
+                    //     iter.next();
+                    //
+                    //     if stack.is_empty() {
+                    //         return Err(LangError::UnsufficientValues {
+                    //             op: "or".to_string(),
+                    //             exp: 1,
+                    //             got: stack.len()
+                    //         }.into());
+                    //     }
+                    //
+                    //     let a = stack.pop().unwrap_or_else(|| unreachable!("or"));
+                    //
+                    //     if variables.contains_key(s) {
+                    //         stack.push(RuntimeValue::Bool(a < RuntimeValue::Int(variables[s])));
+                    //     } else {
+                    //         return Err(LangError::UndeclaredVar(s.to_string()).into());
+                    //     }
+                    // }
+                    _ => {
+                        if stack.len() < 2 {
+                            return Err(LangError::UnsufficientValues {
+                                op: "or".to_string(),
+                                exp: 2,
+                                got: stack.len()
+                            }.into());
+                        }
+
+                        let b = stack.pop().unwrap_or_else(|| unreachable!("or"));
+                        let a = stack.pop().unwrap_or_else(|| unreachable!("or"));
+
+                        match (a, b) {
+                            (RuntimeValue::Bool(b1), RuntimeValue::Bool(b2)) => {
+                                stack.push(RuntimeValue::Bool(b1 || b2));
+                            }
+                            (type1, type2) => {
+                                return Err(LangError::UnexpectedTypes {
+                                    exp: (RuntimeValue::Bool(false), RuntimeValue::Bool(false)),
+                                    got: (type1, type2)
+                                }.into());
+                            }
+                        }
+                    }
+                }
+            }
+            Token::VarLit(_) => todo!("report this"),
         }
     }
     Ok(())
@@ -509,7 +654,7 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
 fn parse_var(v: Option<&Token>, variables: &mut HashMap<String, i32>) -> Result<(), Box<dyn Error>>{
     match v{
         Some(tk) => match tk{
-            Token::StrLit(s) => {
+            Token::VarLit(s) => {
                 if variables.contains_key(s){
                     return Err(LangError::RedeclarationVar(s.clone()).into());
                 }
