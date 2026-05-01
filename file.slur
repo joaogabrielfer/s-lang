@@ -14,8 +14,3 @@ eq a if {
 	push a
 	pop
 }
-
-true if {
-	push 3
-	pop
-}

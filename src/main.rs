@@ -75,9 +75,12 @@ enum Token{
     CloseCurly,
     If,
     Else,
+    And,
+    Or,
     BoolLit(bool),
     StrLit(String),
     NumberLit(i32),
+    Quit,
 }
 
 #[derive(Clone, PartialEq)]
@@ -247,12 +250,11 @@ fn tokenize(content: String) -> Vec<Token> {
             "}"     => Token::CloseCurly,
             "if"    => Token::If,
             "else"  => Token::Else,
+            "and"   => Token::And,
+            "or"    => Token::Or,
             "true"  => Token::BoolLit(true),
             "false" => Token::BoolLit(false),
-            "quit"  => {
-                println!("Exiting program...");
-                exit(0);
-            },
+            "quit"  => Token::Quit,
             _ => {
                 let parse_result = word.parse::<i32>();
                 match parse_result{
@@ -270,6 +272,10 @@ fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut Hash
     let mut iter = tokens.iter().peekable();
     while let Some(tk) = iter.next() {
         match tk {
+            Token::Quit => {
+                println!("Exiting program...");
+                exit(0)
+            }
             Token::Push => {
                 let mut is_first = true;
 
@@ -389,6 +395,7 @@ fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut Hash
                     iter.next();
                     if variables.contains_key(s){
                         stack.push(RuntimeValue::Int(variables[s]));
+                        continue;
                     } else {
                         return Err(LangError::UndeclaredVar(s.to_string()).into())
                     }
@@ -751,9 +758,11 @@ fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut Hash
                     }
                 }
             }
-            Token::Else => todo!("report error"),
+            Token::Else => return Err(LangError::InvalidToken(Token::Else).into()),
             Token::OpenCurly => { },
             Token::CloseCurly => { },
+            Token::And => todo!(),
+            Token::Or => todo!(),
         }
     }
     Ok(())
