@@ -1,0 +1,22 @@
+include print
+;; ou include "print.slur" ;;
+
+fun factorial {
+	 dup
+	 gt 0 if {
+		dup
+		push 1
+		swap
+		sub
+		call factorial
+		mul
+	 } else {
+		drop
+		push 1
+	 }
+}
+
+push 5
+call factorial
+push "%"
+call print

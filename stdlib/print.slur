@@ -1,0 +1,19 @@
+fun print {
+	push "%"
+	splitb
+	if {
+		pop
+		swap
+		pop
+		call print
+	} else {
+		push "\n"
+		pop
+		pop
+	}
+}
+
+push 40
+push 20
+push "10 % 30 %"
+call print
