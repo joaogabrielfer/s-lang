@@ -29,15 +29,19 @@ fn main() -> Result<(), Box<dyn Error>>{
                     exit(0);
             }
 
-            if let Err(e) = parse(tokens.clone(), &mut stack, &mut variables, &mut functions){
-                eprintln!("ERROR: {e}")
-            } else {
-                if tokens[tokens.len() - 1] == Token::Pop{
-                    println!()
+            match parse(tokens.clone(), &mut stack, &mut variables, &mut functions){
+                Ok(Flow::Return) => return Ok(()),
+                Err(e) => {
+                    eprintln!("ERROR: {e}");
+                    exit(0);
                 }
-                println!("stack: {:?}", stack);
+                _ => {
+                    if tokens[tokens.len() - 1] == Token::Pop{
+                        println!()
+                    }
+                    println!("stack: {:?}", stack);
+                }
             }
-
             input.clear();
         }
     } else {
@@ -52,9 +56,13 @@ fn main() -> Result<(), Box<dyn Error>>{
             exit(0);
         }
 
-        if let Err(e) = parse(tokens, &mut stack, &mut variables, &mut functions){
-            eprintln!("ERROR: {e}");
-            exit(0);
+        match parse(tokens, &mut stack, &mut variables, &mut functions){
+            Ok(Flow::Return) => return Ok(()),
+            Err(e) => {
+                eprintln!("ERROR: {e}");
+                exit(0);
+            }
+            _ => { }
         }
 
 

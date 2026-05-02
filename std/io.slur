@@ -1,11 +1,11 @@
-fun print {
+fun printf {
 	push "%"
 	splitb
 	if {
 		pop
 		swap
 		pop
-		call print
+		call printf
 	} else {
 		push "\n"
 		pop
@@ -13,7 +13,16 @@ fun print {
 	}
 }
 
+fun print {
+	pop
+	push "\n"
+	pop
+}
+
 push 40
 push 20
 push "10 % 30 %"
+call printf
+
+push "teste"
 call print

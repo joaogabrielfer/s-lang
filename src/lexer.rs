@@ -10,10 +10,10 @@ pub enum Token{
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
     If, Else,
-    And, Or,
+    And, Or, Not,
     FunDeclaration(String), FunCall(String),
     BoolLit(bool), StrLit(String), VarLit(String), NumberLit(i32),
-    Quit,
+    Quit, Ret,
 }
 
 pub fn tokenize(content: String) -> Vec<Token> {
@@ -97,9 +97,11 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "else"   => Token::Else,
                     "and"    => Token::And,
                     "or"     => Token::Or,
+                    "not"    => Token::Not,
                     "true"   => Token::BoolLit(true),
                     "false"  => Token::BoolLit(false),
                     "quit"   => Token::Quit,
+                    "ret"    => Token::Ret,
                     "fun"    => {
                         while let Some(&wc) = chars.peek() {
                             if wc.is_whitespace() { chars.next(); } else { break; }

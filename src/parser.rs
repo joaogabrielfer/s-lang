@@ -3,11 +3,20 @@ use std::process::exit;
 use std::{collections::HashMap, error::Error};
 
 use crate::error::LangError;
-
 use crate::lexer::Token;
-
 use crate::value::RuntimeValue;
-pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut HashMap<String, i32>, functions: &mut HashMap<String, Vec<Token>>) -> Result<(), Box<dyn Error>>{
+
+pub enum Flow{
+    Next,
+    Return
+}
+
+pub fn parse(
+    tokens: Vec<Token>,
+    stack: &mut Vec<RuntimeValue>,
+    variables: &mut HashMap<String, i32>,
+    functions: &mut HashMap<String, Vec<Token>>
+) -> Result<Flow, Box<dyn Error>>{
     let mut iter = tokens.iter().peekable();
     while let Some(tk) = iter.next() {
         match tk {
@@ -438,13 +447,17 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                     let else_branch_vec = collect_tokens_into_block(&mut iter);
 
                     if condition {
-                        parse(if_branch_vec, stack, variables, functions)?;
+                        if let Flow::Return = parse(if_branch_vec, stack, variables, functions)?{
+                            return Ok(Flow::Return);
+                        }
                     } else {
-                        parse(else_branch_vec, stack, variables, functions)?;
+                        if let Flow::Return = parse(else_branch_vec, stack, variables, functions)?{
+                            return Ok(Flow::Return);
+                        }
                     }
                 } else {
-                    if condition {
-                        parse(if_branch_vec, stack, variables, functions)?;
+                    if condition && let Flow::Return = parse(if_branch_vec, stack, variables, functions)? {
+                            return Ok(Flow::Return);
                     }
                 }
             }
@@ -589,6 +602,16 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                     }
                 }
             }
+            Token::Not => {
+                if stack.is_empty(){
+                    return Err(LangError::StackEmpty.into())
+                }
+
+                match stack.pop().unwrap_or_else(|| unreachable!("not")){
+                    RuntimeValue::Bool(b) => stack.push(RuntimeValue::Bool(!b)),
+                    other => return Err(LangError::UnexpectedType { exp: RuntimeValue::Bool(false), got: other }.into())
+                }
+            }
             Token::FunDeclaration(fun_name) => {
                 expect_open_curly(iter.next())?;
                 let fun_block = collect_tokens_into_block(&mut iter);
@@ -636,9 +659,10 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                     }
                 }
             }
+            Token::Ret => return Ok(Flow::Return),
         }
     }
-    Ok(())
+    Ok(Flow::Next)
 }
 
 fn parse_var(v: Option<&Token>, variables: &mut HashMap<String, i32>) -> Result<(), Box<dyn Error>>{
