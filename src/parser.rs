@@ -1,3 +1,4 @@
+use std::iter::Peekable;
 use std::process::exit;
 use std::{collections::HashMap, error::Error};
 
@@ -6,7 +7,7 @@ use crate::error::LangError;
 use crate::lexer::Token;
 
 use crate::value::RuntimeValue;
-pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut HashMap<String, i32>) -> Result<(), Box<dyn Error>>{
+pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut HashMap<String, i32>, functions: &mut HashMap<String, Vec<Token>>) -> Result<(), Box<dyn Error>>{
     let mut iter = tokens.iter().peekable();
     while let Some(tk) = iter.next() {
         match tk {
@@ -426,82 +427,24 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                     }.into())
                 };
 
-                let next_token_option = iter.next();
-                match next_token_option {
-                    Some(next_token) => {
-                        if *next_token != Token::OpenCurly {
-                            return Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: format!("{:?}", next_token) }.into());
-                        }
-                    }
-                    None => return Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: "None".to_string() }.into())
-                }
+                expect_open_curly(iter.next())?;
 
-                let mut if_branch_vec: Vec<Token> = vec![];
-                let mut brace_depth = 1;
-
-                for inner_tk in &mut iter {
-                    match inner_tk {
-                        Token::OpenCurly => {
-                            brace_depth += 1;
-                            if_branch_vec.push(inner_tk.clone());
-                        }
-                        Token::CloseCurly => {
-                            brace_depth -= 1;
-                            if brace_depth == 0 {
-                                break;
-                            } else {
-                                if_branch_vec.push(inner_tk.clone());
-                            }
-                        }
-                        _ => {
-                            if_branch_vec.push(inner_tk.clone());
-                        }
-                    }
-                }
-
+                let if_branch_vec = collect_tokens_into_block(&mut iter);
                 if let Some(&Token::Else) = iter.peek() {
                     iter.next();
 
-                    match iter.next() {
-                        Some(tk) => {
-                            if *tk != Token::OpenCurly {
-                                return Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: format!("{:?}", tk) }.into());
-                            }
-                        }
-                        None => return Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: "None".to_string() }.into()),
-                    }
+                    expect_open_curly(iter.next())?;
 
-                    let mut else_branch_vec: Vec<Token> = vec![];
-                    let mut else_brace_depth = 1;
-
-                    for inner_tk in &mut iter {
-                        match inner_tk {
-                            Token::OpenCurly => {
-                                else_brace_depth += 1;
-                                else_branch_vec.push(inner_tk.clone());
-                            }
-                            Token::CloseCurly => {
-                                else_brace_depth -= 1;
-                                if else_brace_depth == 0 {
-                                    break;
-                                } else {
-                                    else_branch_vec.push(inner_tk.clone());
-                                }
-                            }
-                            _ => {
-                                else_branch_vec.push(inner_tk.clone());
-                            }
-                        }
-                    }
+                    let else_branch_vec = collect_tokens_into_block(&mut iter);
 
                     if condition {
-                        parse(if_branch_vec, stack, variables)?;
+                        parse(if_branch_vec, stack, variables, functions)?;
                     } else {
-                        parse(else_branch_vec, stack, variables)?;
+                        parse(else_branch_vec, stack, variables, functions)?;
                     }
                 } else {
                     if condition {
-                        parse(if_branch_vec, stack, variables)?;
+                        parse(if_branch_vec, stack, variables, functions)?;
                     }
                 }
             }
@@ -646,6 +589,53 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                     }
                 }
             }
+            Token::FunDeclaration(fun_name) => {
+                expect_open_curly(iter.next())?;
+                let fun_block = collect_tokens_into_block(&mut iter);
+                if functions.contains_key(fun_name){
+                    return Err(LangError::RedeclarationVar(fun_name.to_string()).into()) //TODO: modify this to generic error
+                }
+                functions.insert(fun_name.to_string(), fun_block);
+            }
+            Token::FunCall(fun_name) => {
+                if !functions.contains_key(fun_name) {
+                    return Err(LangError::UndeclaredVar(fun_name.to_string()).into()) // here too
+                }
+                parse(functions[fun_name].clone(), stack, variables, functions)?;
+            }
+            Token::Len => stack.push(RuntimeValue::Int(stack.len().try_into().unwrap())),
+            Token::Split => {
+                if stack.len() < 2 {
+                    return Err(LangError::UnsufficientValues { op: "Split".to_string(), exp: 2, got: stack.len() }.into())
+                }
+
+                let pattern = stack.pop().unwrap_or_else(|| unreachable!("split"));
+                let source = stack.pop().unwrap_or_else(|| unreachable!("split"));
+                if let Some((left, right)) = source.to_string().split_once(&pattern.to_string()) {
+                    stack.push(RuntimeValue::String(right.to_string()));
+                    stack.push(RuntimeValue::String(left.to_string()));
+                }
+            }
+            Token::SplitB => {
+                if stack.len() < 2 {
+                    return Err(LangError::UnsufficientValues { op: "Split".to_string(), exp: 2, got: stack.len() }.into())
+                }
+                let pattern = stack.pop().unwrap_or_else(|| unreachable!("split"));
+                let source = stack.pop().unwrap_or_else(|| unreachable!("split"));
+                let source_str = source.to_string();
+                let result = source_str.split_once(&pattern.to_string());
+                match result{
+                    Some((left, right)) =>{
+                        stack.push(RuntimeValue::String(right.to_string()));
+                        stack.push(RuntimeValue::String(left.to_string()));
+                        stack.push(RuntimeValue::Bool(true))
+                    }
+                    None => {
+                        stack.push(source);
+                        stack.push(RuntimeValue::Bool(false));
+                    }
+                }
+            }
         }
     }
     Ok(())
@@ -671,4 +661,44 @@ fn parse_var(v: Option<&Token>, variables: &mut HashMap<String, i32>) -> Result<
         }.into())
     };
     Ok(())
+}
+
+
+fn expect_open_curly(nt: Option<&Token>) -> Result<(), Box<dyn Error>>{
+    match nt {
+        Some(next_token) => {
+            if *next_token != Token::OpenCurly {
+                Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: format!("{:?}", next_token) }.into())
+            } else {
+                Ok(())
+            }
+        }
+        None => Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: "None".to_string() }.into())
+    }
+}
+
+fn collect_tokens_into_block(iter: &mut Peekable<std::slice::Iter<Token>>) -> Vec<Token>{
+    let mut block_vector: Vec<Token> = vec![];
+    let mut brace_depth = 1;
+
+    for inner_tk in iter {
+        match inner_tk {
+            Token::OpenCurly => {
+                brace_depth += 1;
+                block_vector.push(inner_tk.clone());
+            }
+            Token::CloseCurly => {
+                brace_depth -= 1;
+                if brace_depth == 0 {
+                    break;
+                } else {
+                    block_vector.push(inner_tk.clone());
+                }
+            }
+            _ => {
+                block_vector.push(inner_tk.clone());
+            }
+        }
+    };
+    block_vector
 }

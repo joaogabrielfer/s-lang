@@ -16,6 +16,7 @@ fn main() -> Result<(), Box<dyn Error>>{
         let mut input = String::new();
         let mut stack: Vec<RuntimeValue> = vec![];
         let mut variables: HashMap<String, i32> = HashMap::new();
+        let mut functions: HashMap<String, Vec<Token>> = HashMap::new();
         loop{
             print!("> ");
             io::stdout().flush()?;
@@ -28,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>>{
                     exit(0);
             }
 
-            if let Err(e) = parse(tokens.clone(), &mut stack, &mut variables){
+            if let Err(e) = parse(tokens.clone(), &mut stack, &mut variables, &mut functions){
                 eprintln!("ERROR: {e}")
             } else {
                 if tokens[tokens.len() - 1] == Token::Pop{
@@ -43,6 +44,7 @@ fn main() -> Result<(), Box<dyn Error>>{
         let content = fs::read_to_string(args[1].clone())?;
         let mut stack : Vec<RuntimeValue> = vec![];
         let mut variables: HashMap<String, i32> = HashMap::new();
+        let mut functions: HashMap<String, Vec<Token>> = HashMap::new();
         let tokens = tokenize(content.clone());
         if cfg!(feature = "token-logging"){
             #[cfg(feature = "token-logging")]
@@ -50,7 +52,7 @@ fn main() -> Result<(), Box<dyn Error>>{
             exit(0);
         }
 
-        if let Err(e) = parse(tokens, &mut stack, &mut variables){
+        if let Err(e) = parse(tokens, &mut stack, &mut variables, &mut functions){
             eprintln!("ERROR: {e}");
             exit(0);
         }

@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "s-lang"
+name = "slur"
 version = "0.1.0"

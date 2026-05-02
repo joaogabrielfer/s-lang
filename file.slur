@@ -1,19 +1,12 @@
-push 20 30 dup add
-eq
-push 1 2
-lt
-or
-if {
-	push 50
-	into var a
-} else {
-	push 30
-	into var a
+fun double {
+	push 2
+	mul
 }
 
-dup a
-eq 50
-if {
-	push a
-	pop
-}
+push 1
+
+call double
+call double
+call double
+
+pop
