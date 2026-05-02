@@ -158,6 +158,7 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
             }
             Token::NumberLit(num) => return Err(LangError::InvalidToken(Token::NumberLit(*num)).into()),
             Token::StrLit(s) => return Err(LangError::InvalidToken(Token::StrLit(s.to_string())).into()),
+            Token::VarLit(s) => return Err(LangError::InvalidToken(Token::VarLit(s.to_string())).into()),
             Token::Var => {
                 let next_token = iter.next();
                 parse_var(next_token, variables)?;
@@ -192,16 +193,16 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                     None => return Err(LangError::StackEmpty.into())
                 };
             }
-            Token::Swp => {
+            Token::Swap => {
                 if stack.len() < 2{
                     return Err(LangError::UnsufficientValues{
-                        op: "swp".to_string(),
+                        op: "Swap".to_string(),
                         exp: 2,
                         got: stack.len()
                     }.into());
                 }
-                let n1 = stack.pop().unwrap_or_else(|| unreachable!("swp"));
-                let n2 = stack.pop().unwrap_or_else(|| unreachable!("swp"));
+                let n1 = stack.pop().unwrap_or_else(|| unreachable!("Swap"));
+                let n2 = stack.pop().unwrap_or_else(|| unreachable!("Swap"));
 
                 stack.push(n1);
                 stack.push(n2);
@@ -645,7 +646,6 @@ pub fn parse(tokens: Vec<Token>, stack: &mut Vec<RuntimeValue>, variables: &mut 
                     }
                 }
             }
-            Token::VarLit(_) => todo!("report this"),
         }
     }
     Ok(())

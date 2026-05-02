@@ -11,7 +11,7 @@ pub enum Token{
     Dup,
     Var,
     Into,
-    Swp,
+    Swap,
     Eq,
     Rot,
     Gt,
@@ -32,51 +32,57 @@ pub enum Token{
 
 pub fn tokenize(content: String) -> Vec<Token> {
     let mut tokens = Vec::new();
-    let iter = content.split_whitespace();
+    let mut iter = content.split_whitespace();
 
-    for word in iter {
-        let token   =  match word {
-            "push"  => Token::Push,
-            "pop"   => Token::Pop,
-            "drop"  => Token::Drop,
-            "add"   => Token::Add,
-            "sub"   => Token::Sub,
-            "mul"   => Token::Mul,
-            "div"   => Token::Div,
-            "neg"   => Token::Neg,
-            "dup"   => Token::Dup,
-            "var"   => Token::Var,
-            "into"  => Token::Into,
-            "swp"   => Token::Swp,
-            "rot"   => Token::Rot,
-            "over"  => Token::Over,
-            "eq"    => Token::Eq,
-            "lt"    => Token::Lt,
-            "gt"    => Token::Gt,
-            "{"     => Token::OpenCurly,
-            "}"     => Token::CloseCurly,
-            "if"    => Token::If,
-            "else"  => Token::Else,
-            "and"   => Token::And,
-            "or"    => Token::Or,
-            "true"  => Token::BoolLit(true),
-            "false" => Token::BoolLit(false),
-            "quit"  => Token::Quit,
-            _ => {
-                let parse_result = word.parse::<i32>();
-                match parse_result{
-                    Ok(num) => Token::NumberLit(num),
-                    Err(_) => {
-                        if word.starts_with("\"") && word.ends_with("\""){
-                            Token::StrLit(word.to_string())
-                        } else {
-                            Token::VarLit(word.to_string())
+    while let Some(word) = iter.next() {
+        if word == ";;"{
+            while let Some(tk) = iter.next() && tk != ";;"{
+                continue;
+            }
+        } else {
+            let token   =  match word {
+                "push"  => Token::Push,
+                "pop"   => Token::Pop,
+                "drop"  => Token::Drop,
+                "add"   => Token::Add,
+                "sub"   => Token::Sub,
+                "mul"   => Token::Mul,
+                "div"   => Token::Div,
+                "neg"   => Token::Neg,
+                "dup"   => Token::Dup,
+                "var"   => Token::Var,
+                "into"  => Token::Into,
+                "swap"  => Token::Swap,
+                "rot"   => Token::Rot,
+                "over"  => Token::Over,
+                "eq"    => Token::Eq,
+                "lt"    => Token::Lt,
+                "gt"    => Token::Gt,
+                "{"     => Token::OpenCurly,
+                "}"     => Token::CloseCurly,
+                "if"    => Token::If,
+                "else"  => Token::Else,
+                "and"   => Token::And,
+                "or"    => Token::Or,
+                "true"  => Token::BoolLit(true),
+                "false" => Token::BoolLit(false),
+                "quit"  => Token::Quit,
+                _ => {
+                    let parse_result = word.parse::<i32>();
+                    match parse_result{
+                        Ok(num) => Token::NumberLit(num),
+                        Err(_) => {
+                            if word.starts_with("\"") && word.ends_with("\""){
+                                Token::StrLit(word.to_string())
+                            } else {
+                                Token::VarLit(word.to_string())
+                            }
                         }
                     }
                 }
-            }
+            };
+            tokens.push(token);
         };
-        tokens.push(token);
     }
     tokens
 }
