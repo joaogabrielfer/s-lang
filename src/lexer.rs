@@ -12,8 +12,9 @@ pub enum Token{
     If, Else,
     And, Or, Not,
     FunDeclaration(String), FunCall(String),
-    BoolLit(bool), StrLit(String), VarLit(String), NumberLit(i32),
+    BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i32),
     Quit, Ret,
+    Include,
 }
 
 pub fn tokenize(content: String) -> Vec<Token> {
@@ -59,7 +60,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     }
                     string_val.push(cc);
                 }
-                tokens.push(Token::StrLit(string_val));
+                tokens.push(Token::QuotedLit(string_val));
             }
             _ => {
                 let mut word = String::new();
@@ -73,36 +74,37 @@ pub fn tokenize(content: String) -> Vec<Token> {
                 }
 
                 let token = match word.as_str() {
-                    "push"   => Token::Push,
-                    "pop"    => Token::Pop,
-                    "drop"   => Token::Drop,
-                    "add"    => Token::Add,
-                    "sub"    => Token::Sub,
-                    "mul"    => Token::Mul,
-                    "div"    => Token::Div,
-                    "neg"    => Token::Neg,
-                    "dup"    => Token::Dup,
-                    "var"    => Token::Var,
-                    "into"   => Token::Into,
-                    "swap"   => Token::Swap,
-                    "len"    => Token::Len,
-                    "rot"    => Token::Rot,
-                    "over"   => Token::Over,
-                    "split"  => Token::Split,
-                    "splitb" => Token::SplitB,
-                    "eq"     => Token::Eq,
-                    "lt"     => Token::Lt,
-                    "gt"     => Token::Gt,
-                    "if"     => Token::If,
-                    "else"   => Token::Else,
-                    "and"    => Token::And,
-                    "or"     => Token::Or,
-                    "not"    => Token::Not,
-                    "true"   => Token::BoolLit(true),
-                    "false"  => Token::BoolLit(false),
-                    "quit"   => Token::Quit,
-                    "ret"    => Token::Ret,
-                    "fun"    => {
+                    "push"    => Token::Push,
+                    "pop"     => Token::Pop,
+                    "drop"    => Token::Drop,
+                    "add"     => Token::Add,
+                    "sub"     => Token::Sub,
+                    "mul"     => Token::Mul,
+                    "div"     => Token::Div,
+                    "neg"     => Token::Neg,
+                    "dup"     => Token::Dup,
+                    "var"     => Token::Var,
+                    "into"    => Token::Into,
+                    "swap"    => Token::Swap,
+                    "len"     => Token::Len,
+                    "rot"     => Token::Rot,
+                    "over"    => Token::Over,
+                    "split"   => Token::Split,
+                    "splitb"  => Token::SplitB,
+                    "eq"      => Token::Eq,
+                    "lt"      => Token::Lt,
+                    "gt"      => Token::Gt,
+                    "if"      => Token::If,
+                    "else"    => Token::Else,
+                    "and"     => Token::And,
+                    "or"      => Token::Or,
+                    "not"     => Token::Not,
+                    "true"    => Token::BoolLit(true),
+                    "false"   => Token::BoolLit(false),
+                    "quit"    => Token::Quit,
+                    "ret"     => Token::Ret,
+                    "include" => Token::Include,
+                    "fun" => {
                         while let Some(&wc) = chars.peek() {
                             if wc.is_whitespace() { chars.next(); } else { break; }
                         }
@@ -144,7 +146,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                         if let Ok(num) = word.parse::<i32>() {
                             Token::NumberLit(num)
                         } else {
-                            Token::VarLit(word)
+                            Token::UnquotedLit(word)
                         }
                     }
                 };

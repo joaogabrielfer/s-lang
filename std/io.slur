@@ -18,11 +18,3 @@ fun print {
 	push "\n"
 	pop
 }
-
-push 40
-push 20
-push "10 % 30 %"
-call printf
-
-push "teste"
-call print

@@ -5,6 +5,11 @@ use crate::value::RuntimeValue;
 pub enum LangError{
     StackEmpty,
     InvalidToken(Token),
+    InvalidImport(String),
+    FileNotFound{
+        file: String,
+        reason: String,
+    },
     UnsufficientValues{
         op: String,
         exp: usize,
@@ -30,6 +35,8 @@ impl std::fmt::Display for LangError{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidToken(tk) => write!(f, "Invalid token '{:?}'", tk),
+            Self::InvalidImport(i) => write!(f, "Invalid import '{i}'"),
+            Self::FileNotFound{file, reason} => write!(f, "Could not open file {file}: {reason}"),
             Self::StackEmpty => write!(f, "Could not pop variable: stack empty"),
             Self::UnsufficientValues{op, exp, got} => write!(f, "Cannot {op}: Expected {exp} value in the stack, got {got}"),
             Self::UnexpectedToken{exp, got} => write!(f, "Expected token '{exp}' got '{got}'"),

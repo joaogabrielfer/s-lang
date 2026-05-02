@@ -33,7 +33,6 @@ fn main() -> Result<(), Box<dyn Error>>{
                 Ok(Flow::Return) => return Ok(()),
                 Err(e) => {
                     eprintln!("ERROR: {e}");
-                    exit(0);
                 }
                 _ => {
                     if tokens[tokens.len() - 1] == Token::Pop{

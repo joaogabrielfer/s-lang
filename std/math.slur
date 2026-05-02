@@ -1,6 +1,3 @@
-include print
-;; ou include "print.slur" ;;
-
 fun factorial {
 	 dup
 	 gt 0 if {
@@ -15,8 +12,3 @@ fun factorial {
 		push 1
 	 }
 }
-
-push 5
-call factorial
-push "%"
-call print

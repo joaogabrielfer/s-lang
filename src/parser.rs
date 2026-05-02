@@ -1,10 +1,13 @@
+use std::fs::{self, read_to_string};
 use std::iter::Peekable;
 use std::process::exit;
 use std::{collections::HashMap, error::Error};
 
 use crate::error::LangError;
-use crate::lexer::Token;
+use crate::lexer::{Token, tokenize};
 use crate::value::RuntimeValue;
+
+pub const STD_LIB_PATH: &str = "/home/joaogabriel/personal/programming/misc/slur/std";
 
 pub enum Flow{
     Next,
@@ -30,18 +33,18 @@ pub fn parse(
                 loop {
                     if !is_first {
                         match iter.peek() {
-                            Some(&Token::NumberLit(_)) | Some(&Token::StrLit(_)) | Some(&Token::VarLit(_)) => { }
+                            Some(&Token::NumberLit(_)) | Some(&Token::QuotedLit(_)) | Some(&Token::UnquotedLit(_)) => { }
                             _ => break
                         }
                     }
 
                     match iter.next() {
                         Some(Token::NumberLit(n)) => stack.push(RuntimeValue::Int(*n)),
-                        Some(Token::StrLit(s)) => {
+                        Some(Token::QuotedLit(s)) => {
                             let trimmed = s.trim_matches('\"').to_string();
                             stack.push(RuntimeValue::String(trimmed));
                         }
-                        Some(Token::VarLit(s)) => {
+                        Some(Token::UnquotedLit(s)) => {
                             if variables.contains_key(s) {
                                 stack.push(RuntimeValue::Int(variables.remove(s).unwrap_or_else(|| unreachable!("push <var>"))));
                             } else {
@@ -147,7 +150,7 @@ pub fn parse(
                 }
             }
             Token::Dup => {
-                if let Some(&Token::VarLit(s)) = iter.peek(){
+                if let Some(&Token::UnquotedLit(s)) = iter.peek(){
                     iter.next();
                     if variables.contains_key(s){
                         stack.push(RuntimeValue::Int(variables[s]));
@@ -167,8 +170,8 @@ pub fn parse(
                 stack.push(stack[stack.len() - 1].clone())
             }
             Token::NumberLit(num) => return Err(LangError::InvalidToken(Token::NumberLit(*num)).into()),
-            Token::StrLit(s) => return Err(LangError::InvalidToken(Token::StrLit(s.to_string())).into()),
-            Token::VarLit(s) => return Err(LangError::InvalidToken(Token::VarLit(s.to_string())).into()),
+            Token::QuotedLit(s) => return Err(LangError::InvalidToken(Token::QuotedLit(s.to_string())).into()),
+            Token::UnquotedLit(s) => return Err(LangError::InvalidToken(Token::UnquotedLit(s.to_string())).into()),
             Token::Var => {
                 let next_token = iter.next();
                 parse_var(next_token, variables)?;
@@ -181,11 +184,11 @@ pub fn parse(
                             let str_next = iter.next();
                             parse_var(str_next, variables)?;
                             match str_next{
-                                Some(Token::VarLit(s)) => s.to_string(),
+                                Some(Token::UnquotedLit(s)) => s.to_string(),
                                 _ => unreachable!("str_next")
                             }
                         },
-                        Some(Token::VarLit(s)) if variables.contains_key(s) => s.to_string(),
+                        Some(Token::UnquotedLit(s)) if variables.contains_key(s) => s.to_string(),
                         Some(other) => return Err(LangError::UnexpectedToken {
                             exp: "Var or Str".to_string(),
                             got: format!("{:?}", other)
@@ -247,7 +250,7 @@ pub fn parse(
 
                         stack.push(RuntimeValue::Bool(a == RuntimeValue::Int(*n_arg)));
                     }
-                    Some(&Token::VarLit(s)) => {
+                    Some(&Token::UnquotedLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
@@ -305,7 +308,7 @@ pub fn parse(
                             }.into())
                         }
                     }
-                    Some(&Token::VarLit(s)) => {
+                    Some(&Token::UnquotedLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
@@ -373,7 +376,7 @@ pub fn parse(
                             }.into())
                         }
                     }
-                    Some(&Token::VarLit(s)) => {
+                    Some(&Token::UnquotedLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
@@ -488,7 +491,7 @@ pub fn parse(
                         }
                     }
                     // TODO: add support to bool vars
-                    // Some(&Token::VarLit(s)) => {
+                    // Some(&Token::UnquotedLit(s)) => {
                     //     iter.next();
                     //
                     //     if stack.is_empty() {
@@ -557,7 +560,7 @@ pub fn parse(
                         }
                     }
                     // TODO: add support to bool vars
-                    // Some(&Token::VarLit(s)) => {
+                    // Some(&Token::UnquotedLit(s)) => {
                     //     iter.next();
                     //
                     //     if stack.is_empty() {
@@ -660,6 +663,38 @@ pub fn parse(
                 }
             }
             Token::Ret => return Ok(Flow::Return),
+            Token::Include => {
+                match iter.next(){
+                    Some(Token::QuotedLit(_s)) => {
+
+                    },
+                    Some(Token::UnquotedLit(s)) => {
+                        if s.contains('/') || s.contains('\\') || s.contains("..") {
+                            return Err(LangError::InvalidImport(s.clone()).into());
+                        }
+                        let new_s = format!("{s}.slur");
+
+                        let target_path = std::path::Path::new(STD_LIB_PATH).join(new_s);
+
+                        match read_to_string(&target_path) {
+                            Ok(content) => {
+                                let tokens = tokenize(content);
+                                parse(tokens, stack, variables, functions)?;
+                            }
+                            Err(_) => {
+                                return Err(LangError::FileNotFound {
+                                    file: s.clone(),
+                                    reason: "No module with this name.".to_string(),
+                                }.into());
+                            }
+                        }
+                    }
+                    other => return Err(LangError::UnexpectedToken {
+                        exp: "QuotedLit or UnquotedLit".to_string(),
+                        got: format!("{:?}", other)
+                    }.into())
+                }
+            }
         }
     }
     Ok(Flow::Next)
@@ -668,7 +703,7 @@ pub fn parse(
 fn parse_var(v: Option<&Token>, variables: &mut HashMap<String, i32>) -> Result<(), Box<dyn Error>>{
     match v{
         Some(tk) => match tk{
-            Token::VarLit(s) => {
+            Token::UnquotedLit(s) => {
                 if variables.contains_key(s){
                     return Err(LangError::RedeclarationVar(s.clone()).into());
                 }
