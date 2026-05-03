@@ -569,17 +569,17 @@ pub fn parse(
                     other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit], other)
                 }
             }
-            Token::PushLine => {
+            Token::ReadLine => {
                 if stack.len() < 2{
-                    ret_error!(UnsufficientValues { op: "PushLine", exp: 2_usize, got: stack.len() })
+                    ret_error!(UnsufficientValues { op: "readline", exp: 2_usize, got: stack.len() })
                 }
 
-                let line_num: usize = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                let line_num: usize = match stack.pop().unwrap_or_else(|| unreachable!("readline")){
                     RuntimeValue::Int(x) if x > 0 => x as usize,
                     RuntimeValue::Int(_) => todo!("return new error type to line idx out of range"),
                     other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)])
                 };
-                let path = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                let path = match stack.pop().unwrap_or_else(|| unreachable!("readline")){
                     RuntimeValue::String(s) => s,
                     other => ret_error!(UnexpectedTypes, [RuntimeValue::String("".to_string())], vec![Some(other)])
                 };
@@ -594,17 +594,17 @@ pub fn parse(
                     }
                 }
             }
-            Token::PushLineB => {
+            Token::ReadLineB => {
                 if stack.len() < 2{
                     stack.push(RuntimeValue::Bool(false))
                 }
 
-                let line_num: usize = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                let line_num: usize = match stack.pop().unwrap_or_else(|| unreachable!("readline")){
                     RuntimeValue::Int(x) if x > 0 => x as usize,
                     RuntimeValue::Int(_) => todo!("return new error type to line idx out of range"),
                     other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)])
                 };
-                let path = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                let path = match stack.pop().unwrap_or_else(|| unreachable!("readline")){
                     RuntimeValue::String(s) => s,
                     other => ret_error!(UnexpectedTypes, [RuntimeValue::String("".to_string())], vec![Some(other)])
                 };

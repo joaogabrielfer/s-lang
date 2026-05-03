@@ -30,7 +30,7 @@ fun __readfile {
 	add
 	dup path
 	over
-	pushlineb
+	readlineb
 	not if {
 		drop
 		ret
