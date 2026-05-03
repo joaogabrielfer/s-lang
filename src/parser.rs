@@ -1,13 +1,14 @@
-use std::fs::{self, read_to_string};
+use std::fs::{File, read_to_string};
+use std::io::{BufRead, BufReader};
 use std::iter::Peekable;
 use std::process::exit;
 use std::{collections::HashMap, error::Error};
 
-use crate::error::LangError;
+use crate::error::{LangError, ret_error};
 use crate::lexer::{Token, tokenize};
 use crate::value::RuntimeValue;
 
-pub const STD_LIB_PATH: &str = "/home/joaogabriel/personal/programming/misc/slur/std";
+pub const STD_LIB_PATH: &str = "/home/joaogabriel/Personal/Programming/projects/slur/std";
 
 pub enum Flow{
     Next,
@@ -17,7 +18,7 @@ pub enum Flow{
 pub fn parse(
     tokens: Vec<Token>,
     stack: &mut Vec<RuntimeValue>,
-    variables: &mut HashMap<String, i32>,
+    variables: &mut HashMap<String, RuntimeValue>,
     functions: &mut HashMap<String, Vec<Token>>
 ) -> Result<Flow, Box<dyn Error>>{
     let mut iter = tokens.iter().peekable();
@@ -46,16 +47,13 @@ pub fn parse(
                         }
                         Some(Token::UnquotedLit(s)) => {
                             if variables.contains_key(s) {
-                                stack.push(RuntimeValue::Int(variables.remove(s).unwrap_or_else(|| unreachable!("push <var>"))));
+                                stack.push(variables.remove(s).unwrap_or_else(|| unreachable!("push <var>")));
                             } else {
-                                   return Err(LangError::UndeclaredVar(s.to_string()).into());
+                                ret_error!(UndeclaredObject { t: "variable", name: s })
                             }
                         }
                         other => {
-                            return Err(LangError::UnexpectedToken {
-                                exp: "Number or String".to_string(),
-                                got: format!("{:?}", other),
-                            }.into());
+                            ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit, NumberLit], other)
                         }
                     }
                     is_first = false;
@@ -65,56 +63,40 @@ pub fn parse(
                 if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => stack.push(a + b),
-                        (type1, type2) => return Err(LangError::UnexpectedTypes { exp: (RuntimeValue::Int(0), RuntimeValue::Int(0)), got: (type1, type2) }.into())
+                        (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![Some(type1), Some(type2)])
                     }
                 } else {
-                    return Err(LangError::UnsufficientValues{
-                        op: "add".to_string(),
-                        exp: 2,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "add", exp: 2_usize, got: stack.len() })
                 }
             }
             Token::Mul =>{
                 if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => stack.push(a * b),
-                        (type1, type2) => return Err(LangError::UnexpectedTypes { exp: (RuntimeValue::Int(0), RuntimeValue::Int(0)), got: (type1, type2) }.into())
+                        (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![Some(type1), Some(type2)])
                     }
                 } else {
-                    return Err(LangError::UnsufficientValues{
-                        op: "mul".to_string(),
-                        exp: 2,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "mul", exp: 2_usize, got: stack.len() })
                 }
             }
             Token::Sub =>{
                 if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => stack.push(a - b),
-                        (type1, type2) => return Err(LangError::UnexpectedTypes { exp: (RuntimeValue::Int(0), RuntimeValue::Int(0)), got: (type1, type2) }.into())
+                        (type1, type2) => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![Some(type1), Some(type2)])
                     }
                 } else {
-                    return Err(LangError::UnsufficientValues{
-                        op: "sub".to_string(),
-                        exp: 2,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "sub", exp: 2_usize, got: stack.len() })
                 }
             }
             Token::Div =>{
                 if let (Some(a), Some(b)) = (stack.pop(), stack.pop()){
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => stack.push(a / b),
-                        (type1, type2) => return Err(LangError::UnexpectedTypes { exp: (RuntimeValue::Int(0), RuntimeValue::Int(0)), got: (type1, type2) }.into())
+                        (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![Some(type1), Some(type2)])
                     }
                 } else {
-                    return Err(LangError::UnsufficientValues{
-                        op: "div".to_string(),
-                        exp: 2,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "div", exp: 2_usize, got: stack.len() })
                 }
             }
             Token::Pop => {
@@ -126,12 +108,12 @@ pub fn parse(
                             _ => print!("{p}"),
                         }
                     }
-                    None => return Err(LangError::StackEmpty.into())
+                    None => ret_error!(StackEmpty)
                 }
             }
             Token::Drop => {
                 if stack.is_empty(){
-                    return Err(LangError::StackEmpty.into())
+                    ret_error!(StackEmpty)
                 }
                 stack.pop().unwrap_or_else(|| unreachable!("drop"));
             }
@@ -139,39 +121,31 @@ pub fn parse(
                 if let Some(n) = stack.pop(){
                     match n {
                         RuntimeValue::Int(_) => stack.push(-n),
-                        other => return Err(LangError::UnexpectedType { exp: RuntimeValue::Int(0), got: other }.into())
+                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)])
                     }
                 } else {
-                    return Err(LangError::UnsufficientValues{
-                        op: "neg".to_string(),
-                        exp: 1,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "neg", exp: 1_usize, got: stack.len() })
                 }
             }
             Token::Dup => {
                 if let Some(&Token::UnquotedLit(s)) = iter.peek(){
                     iter.next();
                     if variables.contains_key(s){
-                        stack.push(RuntimeValue::Int(variables[s]));
+                        stack.push(variables[s].clone());
                         continue;
                     } else {
-                        return Err(LangError::UndeclaredVar(s.to_string()).into())
+                        ret_error!(UndeclaredObject { t: "variable", name: s })
                     }
                 }
                 if stack.is_empty() {
-                    return Err(LangError::UnsufficientValues{
-                        op: "dup".to_string(),
-                        exp: 1,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "dup", exp: 1_usize, got: stack.len() })
                 }
 
                 stack.push(stack[stack.len() - 1].clone())
             }
-            Token::NumberLit(num) => return Err(LangError::InvalidToken(Token::NumberLit(*num)).into()),
-            Token::QuotedLit(s) => return Err(LangError::InvalidToken(Token::QuotedLit(s.to_string())).into()),
-            Token::UnquotedLit(s) => return Err(LangError::InvalidToken(Token::UnquotedLit(s.to_string())).into()),
+            Token::NumberLit(num) => ret_error!(InvalidToken, Token::NumberLit(*num)),
+            Token::QuotedLit(s) => ret_error!(InvalidToken, Token::QuotedLit(s.to_string())),
+            Token::UnquotedLit(s) => ret_error!(InvalidToken, Token::UnquotedLit(s.to_string())),
             Token::Var => {
                 let next_token = iter.next();
                 parse_var(next_token, variables)?;
@@ -189,30 +163,18 @@ pub fn parse(
                             }
                         },
                         Some(Token::UnquotedLit(s)) if variables.contains_key(s) => s.to_string(),
-                        Some(other) => return Err(LangError::UnexpectedToken {
-                            exp: "Var or Str".to_string(),
-                            got: format!("{:?}", other)
-                        }.into()),
+                        Some(other) => ret_error!(UnexpectedToken, [Var, UnquotedLit], Some(other.clone())),
                         None => todo!(),
                     }
                 };
                 match stack.pop(){
-                    Some(n) =>{
-                        match n {
-                            RuntimeValue::Int(n) => variables.insert(var_name, n),
-                            other => return Err(LangError::UnexpectedType { exp: RuntimeValue::Int(0), got: other }.into())
-                        }
-                    }
-                    None => return Err(LangError::StackEmpty.into())
+                    Some(n) => variables.insert(var_name, n),
+                    None => ret_error!(StackEmpty)
                 };
             }
             Token::Swap => {
                 if stack.len() < 2{
-                    return Err(LangError::UnsufficientValues{
-                        op: "Swap".to_string(),
-                        exp: 2,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "Swap", exp: 2_usize, got: stack.len() })
                 }
                 let n1 = stack.pop().unwrap_or_else(|| unreachable!("Swap"));
                 let n2 = stack.pop().unwrap_or_else(|| unreachable!("Swap"));
@@ -223,11 +185,7 @@ pub fn parse(
             Token::Rot => stack.reverse(),
             Token::Over => {
                 if stack.len() < 2{
-                    return Err(LangError::UnsufficientValues{
-                        op: "over".to_string(),
-                        exp: 2,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "over", exp: 2_usize, got: stack.len() })
                 }
 
                 stack.push(stack[stack.len() - 2].clone());
@@ -239,11 +197,7 @@ pub fn parse(
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "eq".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "eq", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("eq"));
@@ -254,28 +208,23 @@ pub fn parse(
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "eq".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "eq", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("eq"));
 
                         if variables.contains_key(s) {
-                            stack.push(RuntimeValue::Bool(a == RuntimeValue::Int(variables[s])));
+                            match variables[s].clone() {
+                                RuntimeValue::Int(n) => stack.push(RuntimeValue::Bool(a == RuntimeValue::Int(n))),
+                                other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)]),
+                            }
                         } else {
-                            return Err(LangError::UndeclaredVar(s.to_string()).into());
+                            ret_error!(UndeclaredObject { t: "variable", name: s })
                         }
                     }
                     _ => {
                         if stack.len() < 2 {
-                            return Err(LangError::UnsufficientValues {
-                                op: "eq".to_string(),
-                                exp: 2,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "eq", exp: 2_usize, got: stack.len() })
                         }
 
                         let b = stack.pop().unwrap_or_else(|| unreachable!("eq"));
@@ -291,49 +240,37 @@ pub fn parse(
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "gt".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "gt", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("gt"));
 
                         match a {
                             RuntimeValue::Int(n1) => stack.push(RuntimeValue::Bool(n1 > *n_arg)),
-                            other => return Err(LangError::UnexpectedType {
-                                exp: RuntimeValue::Int(0),
-                                got: other
-                            }.into())
+                            other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)])
                         }
                     }
                     Some(&Token::UnquotedLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "gt".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "gt", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("gt"));
 
                         if variables.contains_key(s) {
-                            stack.push(RuntimeValue::Bool(a > RuntimeValue::Int(variables[s])));
+                            match variables[s].clone() {
+                                RuntimeValue::Int(n) => stack.push(RuntimeValue::Bool(a > RuntimeValue::Int(n))),
+                                other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)]),
+                            }
                         } else {
-                            return Err(LangError::UndeclaredVar(s.to_string()).into());
+                            ret_error!(UndeclaredObject { t: "variable", name: s })
                         }
                     }
                     _ => {
                         if stack.len() < 2 {
-                            return Err(LangError::UnsufficientValues {
-                                op: "gt".to_string(),
-                                exp: 2,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "gt", exp: 2_usize, got: stack.len() })
                         }
 
                         let b = stack.pop().unwrap_or_else(|| unreachable!("gt"));
@@ -344,10 +281,7 @@ pub fn parse(
                                 stack.push(RuntimeValue::Bool(n1 > n2));
                             }
                             (type1, type2) => {
-                                return Err(LangError::UnexpectedTypes {
-                                    exp: (RuntimeValue::Int(0), RuntimeValue::Int(0)),
-                                    got: (type1, type2)
-                                }.into());
+                                ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![Some(type1), Some(type2)])
                             }
                         }
                     }
@@ -359,49 +293,37 @@ pub fn parse(
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "lt".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "lt", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("lt"));
 
                         match a {
                             RuntimeValue::Int(n1) => stack.push(RuntimeValue::Bool(n1 < *n_arg)),
-                            other => return Err(LangError::UnexpectedType {
-                                exp: RuntimeValue::Int(0),
-                                got: other
-                            }.into())
+                            other => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0)], vec![Some(other)])
                         }
                     }
                     Some(&Token::UnquotedLit(s)) => {
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "lt".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "lt", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("lt"));
 
                         if variables.contains_key(s) {
-                            stack.push(RuntimeValue::Bool(a < RuntimeValue::Int(variables[s])));
+                            match variables[s].clone() {
+                                RuntimeValue::Int(n) => stack.push(RuntimeValue::Bool(a < RuntimeValue::Int(n))),
+                                other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)]),
+                            }
                         } else {
-                            return Err(LangError::UndeclaredVar(s.to_string()).into());
+                            ret_error!(UndeclaredObject { t: "variable", name: s })
                         }
                     }
                     _ => {
                         if stack.len() < 2 {
-                            return Err(LangError::UnsufficientValues {
-                                op: "lt".to_string(),
-                                exp: 2,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "lt", exp: 2_usize, got: stack.len() })
                         }
 
                         let b = stack.pop().unwrap_or_else(|| unreachable!("lt"));
@@ -412,10 +334,7 @@ pub fn parse(
                                 stack.push(RuntimeValue::Bool(n1 < n2));
                             }
                             (type1, type2) => {
-                                return Err(LangError::UnexpectedTypes {
-                                    exp: (RuntimeValue::Int(0), RuntimeValue::Int(0)),
-                                    got: (type1, type2)
-                                }.into());
+                                ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![Some(type1), Some(type2)])
                             }
                         }
                     }
@@ -423,20 +342,13 @@ pub fn parse(
             }
             Token::If => {
                 if stack.is_empty() {
-                    return Err(LangError::UnsufficientValues {
-                        op: "if".to_string(),
-                        exp: 1,
-                        got: stack.len()
-                    }.into());
+                    ret_error!(UnsufficientValues { op: "if", exp: 1_usize, got: stack.len() })
                 }
                 let a = stack.pop().unwrap_or_else(|| unreachable!("if"));
 
                 let condition = match a {
                     RuntimeValue::Bool(c) => c,
-                    other => return Err(LangError::UnexpectedType {
-                        exp: RuntimeValue::Bool(true),
-                        got: other
-                    }.into())
+                    other => ret_error!(UnexpectedTypes,[RuntimeValue::Bool(true)], vec![Some(other)])
                 };
 
                 expect_open_curly(iter.next())?;
@@ -464,7 +376,7 @@ pub fn parse(
                     }
                 }
             }
-            Token::Else => return Err(LangError::InvalidToken(Token::Else).into()),
+            Token::Else => ret_error!(InvalidToken, Token::Else),
             Token::OpenCurly => { },
             Token::CloseCurly => { },
             Token::And => {
@@ -473,21 +385,14 @@ pub fn parse(
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "and".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "and", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("and"));
 
                         match a {
                             RuntimeValue::Bool(b_stack) => stack.push(RuntimeValue::Bool(b_stack && *b_arg)),
-                            other => return Err(LangError::UnexpectedType {
-                                exp: RuntimeValue::Int(0),
-                                got: other
-                            }.into())
+                            other => ret_error!(UnexpectedTypes,[RuntimeValue::Bool(true)], vec![Some(other)])
                         }
                     }
                     // TODO: add support to bool vars
@@ -497,7 +402,7 @@ pub fn parse(
                     //     if stack.is_empty() {
                     //         return Err(LangError::UnsufficientValues {
                     //             op: "and".to_string(),
-                    //             exp: 1,
+                    //             exp: 1_usize,
                     //             got: stack.len()
                     //         }.into());
                     //     }
@@ -512,11 +417,7 @@ pub fn parse(
                     // }
                     _ => {
                         if stack.len() < 2 {
-                            return Err(LangError::UnsufficientValues {
-                                op: "and".to_string(),
-                                exp: 2,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "and", exp: 2_usize, got: stack.len() })
                         }
 
                         let b = stack.pop().unwrap_or_else(|| unreachable!("and"));
@@ -526,12 +427,7 @@ pub fn parse(
                             (RuntimeValue::Bool(b1), RuntimeValue::Bool(b2)) => {
                                 stack.push(RuntimeValue::Bool(b1 && b2));
                             }
-                            (type1, type2) => {
-                                return Err(LangError::UnexpectedTypes {
-                                    exp: (RuntimeValue::Bool(false), RuntimeValue::Bool(false)),
-                                    got: (type1, type2)
-                                }.into());
-                            }
+                            (type1, type2) => ret_error!(UnexpectedTypes, [RuntimeValue::Bool(false), RuntimeValue::Bool(false)], vec![Some(type1), Some(type2)])
                         }
                     }
                 }
@@ -542,21 +438,14 @@ pub fn parse(
                         iter.next();
 
                         if stack.is_empty() {
-                            return Err(LangError::UnsufficientValues {
-                                op: "or".to_string(),
-                                exp: 1,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "or", exp: 1_usize, got: stack.len() })
                         }
 
                         let a = stack.pop().unwrap_or_else(|| unreachable!("or"));
 
                         match a {
                             RuntimeValue::Bool(b_stack) => stack.push(RuntimeValue::Bool(b_stack || *b_arg)),
-                            other => return Err(LangError::UnexpectedType {
-                                exp: RuntimeValue::Int(0),
-                                got: other
-                            }.into())
+                            other => ret_error!(UnexpectedTypes, [RuntimeValue::Bool(true)], vec![Some(other)])
                         }
                     }
                     // TODO: add support to bool vars
@@ -566,7 +455,7 @@ pub fn parse(
                     //     if stack.is_empty() {
                     //         return Err(LangError::UnsufficientValues {
                     //             op: "or".to_string(),
-                    //             exp: 1,
+                    //             exp: 1_usize,
                     //             got: stack.len()
                     //         }.into());
                     //     }
@@ -581,11 +470,7 @@ pub fn parse(
                     // }
                     _ => {
                         if stack.len() < 2 {
-                            return Err(LangError::UnsufficientValues {
-                                op: "or".to_string(),
-                                exp: 2,
-                                got: stack.len()
-                            }.into());
+                            ret_error!(UnsufficientValues { op: "or", exp: 2_usize, got: stack.len() })
                         }
 
                         let b = stack.pop().unwrap_or_else(|| unreachable!("or"));
@@ -596,10 +481,7 @@ pub fn parse(
                                 stack.push(RuntimeValue::Bool(b1 || b2));
                             }
                             (type1, type2) => {
-                                return Err(LangError::UnexpectedTypes {
-                                    exp: (RuntimeValue::Bool(false), RuntimeValue::Bool(false)),
-                                    got: (type1, type2)
-                                }.into());
+                                ret_error!(UnexpectedTypes,[RuntimeValue::Bool(false), RuntimeValue::Bool(false)], vec![Some(type1), Some(type2)])
                             }
                         }
                     }
@@ -607,32 +489,32 @@ pub fn parse(
             }
             Token::Not => {
                 if stack.is_empty(){
-                    return Err(LangError::StackEmpty.into())
+                    ret_error!(StackEmpty)
                 }
 
                 match stack.pop().unwrap_or_else(|| unreachable!("not")){
                     RuntimeValue::Bool(b) => stack.push(RuntimeValue::Bool(!b)),
-                    other => return Err(LangError::UnexpectedType { exp: RuntimeValue::Bool(false), got: other }.into())
+                    other => ret_error!(UnexpectedTypes, [RuntimeValue::Bool(false)], vec![Some(other)])
                 }
             }
             Token::FunDeclaration(fun_name) => {
                 expect_open_curly(iter.next())?;
                 let fun_block = collect_tokens_into_block(&mut iter);
                 if functions.contains_key(fun_name){
-                    return Err(LangError::RedeclarationVar(fun_name.to_string()).into()) //TODO: modify this to generic error
+                    ret_error!(RedeclarationObject { t: "function", name: fun_name })
                 }
                 functions.insert(fun_name.to_string(), fun_block);
             }
             Token::FunCall(fun_name) => {
                 if !functions.contains_key(fun_name) {
-                    return Err(LangError::UndeclaredVar(fun_name.to_string()).into()) // here too
+                    ret_error!(UndeclaredObject { t: "function", name: fun_name })
                 }
                 parse(functions[fun_name].clone(), stack, variables, functions)?;
             }
             Token::Len => stack.push(RuntimeValue::Int(stack.len().try_into().unwrap())),
             Token::Split => {
                 if stack.len() < 2 {
-                    return Err(LangError::UnsufficientValues { op: "Split".to_string(), exp: 2, got: stack.len() }.into())
+                    ret_error!(UnsufficientValues { op: "Split", exp: 2_usize, got: stack.len() })
                 }
 
                 let pattern = stack.pop().unwrap_or_else(|| unreachable!("split"));
@@ -644,7 +526,7 @@ pub fn parse(
             }
             Token::SplitB => {
                 if stack.len() < 2 {
-                    return Err(LangError::UnsufficientValues { op: "Split".to_string(), exp: 2, got: stack.len() }.into())
+                    ret_error!(UnsufficientValues { op: "Split", exp: 2_usize, got: stack.len() })
                 }
                 let pattern = stack.pop().unwrap_or_else(|| unreachable!("split"));
                 let source = stack.pop().unwrap_or_else(|| unreachable!("split"));
@@ -670,7 +552,7 @@ pub fn parse(
                     },
                     Some(Token::UnquotedLit(s)) => {
                         if s.contains('/') || s.contains('\\') || s.contains("..") {
-                            return Err(LangError::InvalidImport(s.clone()).into());
+                            return Err(LangError::InvalidPath(s.clone()).into());
                         }
                         let new_s = format!("{s}.slur");
 
@@ -681,18 +563,61 @@ pub fn parse(
                                 let tokens = tokenize(content);
                                 parse(tokens, stack, variables, functions)?;
                             }
-                            Err(_) => {
-                                return Err(LangError::FileNotFound {
-                                    file: s.clone(),
-                                    reason: "No module with this name.".to_string(),
-                                }.into());
-                            }
+                            Err(_) => ret_error!(FileNotFound { file: s.clone(), reason: "No module with this name." })
                         }
                     }
-                    other => return Err(LangError::UnexpectedToken {
-                        exp: "QuotedLit or UnquotedLit".to_string(),
-                        got: format!("{:?}", other)
-                    }.into())
+                    other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit], other)
+                }
+            }
+            Token::PushLine => {
+                if stack.len() < 2{
+                    ret_error!(UnsufficientValues { op: "PushLine", exp: 2_usize, got: stack.len() })
+                }
+
+                let line_num: usize = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                    RuntimeValue::Int(x) if x > 0 => x as usize,
+                    RuntimeValue::Int(_) => todo!("return new error type to line idx out of range"),
+                    other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)])
+                };
+                let path = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                    RuntimeValue::String(s) => s,
+                    other => ret_error!(UnexpectedTypes, [RuntimeValue::String("".to_string())], vec![Some(other)])
+                };
+
+                let file = File::open(path)?;
+                let reader = BufReader::new(file);
+
+                if let Some(line) = reader.lines().nth(line_num - 1){
+                    match line {
+                        Ok(l) => stack.push(RuntimeValue::String(l)),
+                        _ => todo!("return new error type to line idx out of range")
+                    }
+                }
+            }
+            Token::PushLineB => {
+                if stack.len() < 2{
+                    stack.push(RuntimeValue::Bool(false))
+                }
+
+                let line_num: usize = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                    RuntimeValue::Int(x) if x > 0 => x as usize,
+                    RuntimeValue::Int(_) => todo!("return new error type to line idx out of range"),
+                    other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(other)])
+                };
+                let path = match stack.pop().unwrap_or_else(|| unreachable!("PushLine")){
+                    RuntimeValue::String(s) => s,
+                    other => ret_error!(UnexpectedTypes, [RuntimeValue::String("".to_string())], vec![Some(other)])
+                };
+
+                let file = File::open(path)?;
+                let reader = BufReader::new(file);
+
+                match reader.lines().nth(line_num - 1){
+                    Some(Ok(l)) => {
+                        stack.push(RuntimeValue::String(l));
+                        stack.push(RuntimeValue::Bool(true));
+                    }
+                    _ => stack.push(RuntimeValue::Bool(false))
                 }
             }
         }
@@ -700,24 +625,18 @@ pub fn parse(
     Ok(Flow::Next)
 }
 
-fn parse_var(v: Option<&Token>, variables: &mut HashMap<String, i32>) -> Result<(), Box<dyn Error>>{
+fn parse_var(v: Option<&Token>, variables: &mut HashMap<String, RuntimeValue>) -> Result<(), Box<dyn Error>>{
     match v{
         Some(tk) => match tk{
             Token::UnquotedLit(s) => {
                 if variables.contains_key(s){
-                    return Err(LangError::RedeclarationVar(s.clone()).into());
+                    ret_error!(RedeclarationObject { t: "variable", name: s })
                 }
-                variables.insert(s.clone(), 0)
+                variables.insert(s.clone(), RuntimeValue::Int(0))
             }
-            _ => return Err(LangError::UnexpectedToken {
-                exp: "Str".to_string(),
-                got: format!("{:?}", v)
-            }.into())
+            _ => ret_error!(UnexpectedToken, [UnquotedLit], Some(tk))
         }
-        None => return Err(LangError::UnexpectedToken {
-            exp: "Str".to_string(),
-            got: "None".to_string(),
-        }.into())
+        None => ret_error!(UnexpectedToken, [UnquotedLit], None::<Token>)
     };
     Ok(())
 }
@@ -727,12 +646,14 @@ fn expect_open_curly(nt: Option<&Token>) -> Result<(), Box<dyn Error>>{
     match nt {
         Some(next_token) => {
             if *next_token != Token::OpenCurly {
-                Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: format!("{:?}", next_token) }.into())
+                ret_error!(UnexpectedToken, [OpenCurly], Some(next_token))
             } else {
                 Ok(())
             }
         }
-        None => Err(LangError::UnexpectedToken { exp: "OpenCurly".to_string(), got: "None".to_string() }.into())
+        None => {
+            ret_error!(UnexpectedToken, [OpenCurly], None::<Token>)
+        }
     }
 }
 

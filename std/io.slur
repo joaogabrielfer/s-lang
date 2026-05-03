@@ -18,3 +18,24 @@ fun print {
 	push "\n"
 	pop
 }
+
+fun readfile {
+	into var path
+	push 0
+	call __readfile
+}
+
+fun __readfile {
+	push 1
+	add
+	dup path
+	over
+	pushlineb
+	not if {
+		drop
+		ret
+	}
+	swap
+	call __readfile
+}
+

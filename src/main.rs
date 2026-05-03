@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>>{
     if args.len() < 2 {
         let mut input = String::new();
         let mut stack: Vec<RuntimeValue> = vec![];
-        let mut variables: HashMap<String, i32> = HashMap::new();
+        let mut variables: HashMap<String, RuntimeValue> = HashMap::new();
         let mut functions: HashMap<String, Vec<Token>> = HashMap::new();
         loop{
             print!("> ");
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>>{
                     if tokens[tokens.len() - 1] == Token::Pop{
                         println!()
                     }
-                    println!("stack: {:?}", stack);
+                    print_stack(&stack);
                 }
             }
             input.clear();
@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn Error>>{
     } else {
         let content = fs::read_to_string(args[1].clone())?;
         let mut stack : Vec<RuntimeValue> = vec![];
-        let mut variables: HashMap<String, i32> = HashMap::new();
+        let mut variables: HashMap<String, RuntimeValue> = HashMap::new();
         let mut functions: HashMap<String, Vec<Token>> = HashMap::new();
         let tokens = tokenize(content.clone());
         if cfg!(feature = "token-logging"){
@@ -73,6 +73,21 @@ fn main() -> Result<(), Box<dyn Error>>{
     Ok(())
 }
 
+fn print_stack(stack: &[RuntimeValue]){
+    print!("stack: [");
+    stack
+        .iter()
+        .for_each(|x| {
+            match x{
+                RuntimeValue::String(s) => print!("\"{s}\""),
+                x => print!("{x}") // TODO: não coloca virgulas caso o mesmo numero
+            }
+            if let Some(l) = stack.last() && x != l{
+                print!(", ");
+            }
+        });
+    println!("]");
+}
 
 #[cfg(feature = "token-logging")]
 fn log_tokens(tokens: Vec<Token>){
