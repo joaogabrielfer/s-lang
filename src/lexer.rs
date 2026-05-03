@@ -6,6 +6,7 @@ pub enum Token{
     Add, Sub, Mul, Div, Neg, Dup,
     Len, Split, SplitB,
     Var, Into,
+    Int, IntB,
     Swap, Rot, Over,
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
@@ -26,7 +27,8 @@ impl Token {
             Token::QuotedLit(_) => "QuotedLit",
             Token::UnquotedLit(_) => "UnquotedLit",
             Token::NumberLit(_) => "NumberLit",
-            _ => panic!("calling type name in a type without params")
+            _ => panic!("calling type name in a type without params") // TODO: this is somehow
+                                                                      // called from someone
         }
     }
 }
@@ -101,6 +103,8 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "dup"       => Token::Dup,
                     "var"       => Token::Var,
                     "into"      => Token::Into,
+                    "int"       => Token::Int,
+                    "intb"      => Token::IntB,
                     "swap"      => Token::Swap,
                     "len"       => Token::Len,
                     "rot"       => Token::Rot,

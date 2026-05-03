@@ -620,6 +620,50 @@ pub fn parse(
                     _ => stack.push(RuntimeValue::Bool(false))
                 }
             }
+            Token::Int => {
+                if stack.is_empty(){
+                    ret_error!(StackEmpty)
+                }
+
+                match stack.pop().unwrap_or_else(|| unreachable!("intb")){
+                    RuntimeValue::String(s) => match s.parse::<i32>(){
+                        Ok(n) => stack.push(RuntimeValue::Int(n)),
+                        Err(_) => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(RuntimeValue::String(s))]) // TODO: fix this error handling
+                    }
+                    RuntimeValue::Bool(b) => if b {
+                        stack.push(RuntimeValue::Int(1));
+                    } else {
+                        stack.push(RuntimeValue::Int(0));
+                    }
+                    RuntimeValue::Int(i) => stack.push(RuntimeValue::Int(i)),
+                };
+            }
+            Token::IntB => {
+                if stack.is_empty(){
+                    ret_error!(StackEmpty)
+                }
+
+                match stack.pop().unwrap_or_else(|| unreachable!("intb")){
+                    RuntimeValue::String(s) => match s.parse::<i32>(){
+                        Ok(n) => {
+                            stack.push(RuntimeValue::Int(n));
+                            stack.push(RuntimeValue::Bool(true));
+                        }
+                        Err(_) => stack.push(RuntimeValue::Bool(false)),
+                    }
+                    RuntimeValue::Bool(b) => if b {
+                        stack.push(RuntimeValue::Int(1));
+                        stack.push(RuntimeValue::Bool(true));
+                    } else {
+                        stack.push(RuntimeValue::Int(0));
+                        stack.push(RuntimeValue::Bool(false));
+                    }
+                    RuntimeValue::Int(i) =>{
+                        stack.push(RuntimeValue::Int(i));
+                        stack.push(RuntimeValue::Bool(true));
+                    }
+                };
+            }
         }
     }
     Ok(Flow::Next)

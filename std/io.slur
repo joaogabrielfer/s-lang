@@ -1,3 +1,20 @@
+fun splitall {
+	into var sep
+	call __splitall
+	push sep drop
+}
+
+;; var sep =  " " ;;
+;; "2 3" "1"true;;
+fun __splitall{
+	dup sep
+	splitb
+	if {
+		swap
+		call __splitall
+	}
+}
+
 fun printf {
 	push "%"
 	splitb
