@@ -1,6 +1,6 @@
 #[derive(Clone, PartialEq)]
 pub enum RuntimeValue {
-    Int(i32),
+    Int(i64),
     Bool(bool),
     String(String),
 }

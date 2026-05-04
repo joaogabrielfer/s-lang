@@ -1,0 +1,63 @@
+include io
+
+fun fib {
+	into var limit
+	push 1 into var idx
+	push 1 0
+	call __fib
+	push limit drop
+	drop
+}
+
+;; 3 5;;
+fun __fib{
+	over
+	add
+	swap
+	push idx
+	push 1
+	add
+	dup
+	dup limit
+	lt if {
+		into var idx
+		call __fib
+	} else {
+		drop
+	}
+}
+
+;; push 90 call fib call print ;;
+fun mod {
+    ;; Stack expects: [a, b] ;;
+    over over   ;; [a, b, a, b] ;;
+    div mul     ;; [a, b, (a/b)*b] ;;
+    sub         ;; [a, a - (a/b)*b] -> Wait, we need to drop the original b ;;
+}
+
+fun collatz_step {
+    ;; Stack expects: [n, count] ;;
+    over eq 1 if {
+        ;; if n == 1, we are done. Return count. ;;
+        swap drop
+    } else {
+        ;; Check if even or odd ;;
+        over push 2 call mod
+        eq 0 if {
+            ;; EVEN: n / 2 ;;
+            swap push 2 div swap
+        } else {
+            ;; ODD: 3n + 1 ;;
+            swap push 3 mul push 1 add swap
+        }
+        ;; Increment count and recurse ;;
+        push 1 add
+        call collatz_step
+    }
+}
+
+;; Run Collatz for 837,799 starting with step count 0 ;;
+push 4
+push 0
+call collatz_step
+pop

@@ -13,7 +13,7 @@ pub enum Token{
     If, Else,
     And, Or, Not,
     FunDeclaration(String), FunCall(String),
-    BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i32),
+    BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i64),
     Quit, Ret,
     Include,
 }
@@ -163,7 +163,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     }
 
                     _ => {
-                        if let Ok(num) = word.parse::<i32>() {
+                        if let Ok(num) = word.parse::<i64>() {
                             Token::NumberLit(num)
                         } else {
                             Token::UnquotedLit(word)

@@ -8,7 +8,7 @@ use crate::error::{LangError, ret_error};
 use crate::lexer::{Token, tokenize};
 use crate::value::RuntimeValue;
 
-pub const STD_LIB_PATH: &str = "/home/joaogabriel/Personal/Programming/projects/slur/std";
+pub const STD_LIB_PATH: &str = "/home/joaogabriel/personal/programming/misc/slur/std";
 
 pub enum Flow{
     Next,
@@ -626,7 +626,7 @@ pub fn parse(
                 }
 
                 match stack.pop().unwrap_or_else(|| unreachable!("intb")){
-                    RuntimeValue::String(s) => match s.parse::<i32>(){
+                    RuntimeValue::String(s) => match s.parse::<i64>(){
                         Ok(n) => stack.push(RuntimeValue::Int(n)),
                         Err(_) => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![Some(RuntimeValue::String(s))]) // TODO: fix this error handling
                     }
@@ -644,7 +644,7 @@ pub fn parse(
                 }
 
                 match stack.pop().unwrap_or_else(|| unreachable!("intb")){
-                    RuntimeValue::String(s) => match s.parse::<i32>(){
+                    RuntimeValue::String(s) => match s.parse::<i64>(){
                         Ok(n) => {
                             stack.push(RuntimeValue::Int(n));
                             stack.push(RuntimeValue::Bool(true));
