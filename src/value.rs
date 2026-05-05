@@ -2,15 +2,21 @@ use std::{collections::HashMap, rc::Rc};
 use crate::lexer::Token;
 
 pub struct PVM{
-    stack: Vec<Token>,
-    elements: HashMap<String, RuntimeValue>
+    pub stack: Vec<RuntimeValue>,
+    pub elements: HashMap<String, RuntimeValue>
+}
+
+impl PVM {
+    pub fn new() -> Self {
+        Self { stack: vec![], elements: HashMap::new() }
+    }
 }
 
 #[derive(Clone, PartialEq)]
 pub enum RuntimeValue {
     Int(i64),
     Bool(bool),
-    String(String),
+    String(Rc<String>),
     Block(Vec<Token>),
 }
 

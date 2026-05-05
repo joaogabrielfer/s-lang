@@ -3,7 +3,7 @@ mod lexer;
 mod value;
 mod parser;
 
-use std::{collections::HashMap, error::Error, fs, io::{self, Write}, process::exit, vec};
+use std::{error::Error, fs, io::{self, Write}, process::exit};
 
 use lexer::*;
 use value::*;
@@ -14,9 +14,7 @@ fn main() -> Result<(), Box<dyn Error>>{
 
     if args.len() < 2 {
         let mut input = String::new();
-        let mut stack: Vec<RuntimeValue> = vec![];
-        let mut variables: HashMap<String, RuntimeValue> = HashMap::new();
-        let mut functions: HashMap<String, Vec<Token>> = HashMap::new();
+        let mut pvm = PVM::new();
         loop{
             print!("> ");
             io::stdout().flush()?;
@@ -29,26 +27,24 @@ fn main() -> Result<(), Box<dyn Error>>{
                     exit(0);
             }
 
-            match parse(tokens.clone(), &mut stack, &mut variables, &mut functions){
+            match pvm.parse(tokens.clone()){
                 Ok(Flow::Return) => return Ok(()),
                 Err(e) => {
                     eprintln!("ERROR: {e}");
-                    print_stack(&stack);
+                    print_stack(&pvm.stack);
                 }
                 _ => {
                     if tokens[tokens.len() - 1] == Token::Pop{
                         println!()
                     }
-                    print_stack(&stack);
+                    print_stack(&pvm.stack);
                 }
             }
             input.clear();
         }
     } else {
         let content = fs::read_to_string(args[1].clone())?;
-        let mut stack : Vec<RuntimeValue> = vec![];
-        let mut variables: HashMap<String, RuntimeValue> = HashMap::new();
-        let mut functions: HashMap<String, Vec<Token>> = HashMap::new();
+        let mut pvm = PVM::new();
         let tokens = tokenize(content.clone());
         if cfg!(feature = "token-logging"){
             #[cfg(feature = "token-logging")]
@@ -56,7 +52,8 @@ fn main() -> Result<(), Box<dyn Error>>{
             exit(0);
         }
 
-        match parse(tokens, &mut stack, &mut variables, &mut functions){
+        match pvm.parse(tokens){
+
             Ok(Flow::Return) => return Ok(()),
             Err(e) => {
                 eprintln!("ERROR: {e}");
@@ -66,8 +63,8 @@ fn main() -> Result<(), Box<dyn Error>>{
         }
 
 
-        if !stack.is_empty(){
-            println!("warning: trailing number still in the stack: {:?}", stack);
+        if !pvm.stack.is_empty(){
+            println!("warning: trailing number still in the stack: {:?}", pvm.stack);
         }
     }
 
