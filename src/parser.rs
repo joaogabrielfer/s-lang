@@ -38,7 +38,7 @@ impl PVM {
                     loop {
                         if !is_first {
                             match frame.peek() {
-                                Some(&Token::NumberLit(_)) | Some(&Token::QuotedLit(_)) | Some(&Token::UnquotedLit(_)) => { }
+                                Some(&Token::NumberLit(_)) | Some(&Token::QuotedLit(_)) | Some(&Token::UnquotedLit(_)) => { } // TODO: fix push. issue prob here
                                 _ => break
                             }
                         }
