@@ -27,17 +27,17 @@ fn main() -> Result<(), Box<dyn Error>>{
                     exit(0);
             }
 
-            match pvm.parse(tokens.clone()){
+            match pvm.parse(){
                 Ok(Flow::Return) => return Ok(()),
                 Err(e) => {
                     eprintln!("ERROR: {e}");
-                    print_stack(&pvm.stack);
+                    print_stack(&pvm.data_stack);
                 }
                 _ => {
                     if tokens[tokens.len() - 1] == Token::Pop{
                         println!()
                     }
-                    print_stack(&pvm.stack);
+                    print_stack(&pvm.data_stack);
                 }
             }
             input.clear();
@@ -45,15 +45,19 @@ fn main() -> Result<(), Box<dyn Error>>{
     } else {
         let content = fs::read_to_string(args[1].clone())?;
         let mut pvm = PVM::new();
-        let tokens = tokenize(content.clone());
+        pvm.call_stack.push(CallFrame {
+            instructions: tokenize(content.clone()),
+            ip: 0,
+            frame_pointer: 0
+        });
+
         if cfg!(feature = "token-logging"){
             #[cfg(feature = "token-logging")]
-            log_tokens(tokens.clone());
+            log_tokens(pvm.call_stack[0].instructions.clone());
             exit(0);
         }
 
-        match pvm.parse(tokens){
-
+        match pvm.parse(){
             Ok(Flow::Return) => return Ok(()),
             Err(e) => {
                 eprintln!("ERROR: {e}");
@@ -63,8 +67,8 @@ fn main() -> Result<(), Box<dyn Error>>{
         }
 
 
-        if !pvm.stack.is_empty(){
-            println!("warning: trailing number still in the stack: {:?}", pvm.stack);
+        if !pvm.data_stack.is_empty(){
+            println!("warning: trailing number still in the stack: {:?}", pvm.data_stack);
         }
     }
 

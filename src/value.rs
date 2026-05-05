@@ -2,13 +2,39 @@ use std::{collections::HashMap, rc::Rc};
 use crate::lexer::Token;
 
 pub struct PVM{
-    pub stack: Vec<RuntimeValue>,
+    pub data_stack: Vec<RuntimeValue>,
+    pub call_stack: Vec<CallFrame>,
     pub elements: HashMap<String, RuntimeValue>
 }
 
 impl PVM {
     pub fn new() -> Self {
-        Self { stack: vec![], elements: HashMap::new() }
+        Self {
+            data_stack: vec![],
+            call_stack: vec![],
+            elements: HashMap::new()
+        }
+}
+}
+
+pub struct CallFrame {
+    pub instructions: Vec<Token>,
+    pub ip: usize,
+    pub frame_pointer: usize,
+}
+impl CallFrame {
+    pub fn peek(&self) -> Option<&Token> {
+        self.instructions.get(self.ip)
+    }
+
+    // pub fn peek_ahead(&self, steps: usize) -> Option<&Token> {
+    //     self.instructions.get(self.ip + steps - 1)
+    // }
+
+    pub fn next(&mut self) -> Option<&Token> {
+        let result = self.instructions.get(self.ip);
+        self.ip += 1;
+        result
     }
 }
 

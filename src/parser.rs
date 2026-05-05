@@ -1,13 +1,12 @@
 use std::fs::{File, read_to_string};
 use std::io::{BufRead, BufReader};
-use std::iter::Peekable;
 use std::process::exit;
 use std::error::Error;
 use std::rc::Rc;
 
 use crate::error::{LangError, ret_error};
 use crate::lexer::{Token, tokenize};
-use crate::value::{RuntimeValue, PVM};
+use crate::value::{CallFrame, PVM, RuntimeValue};
 
 pub const STD_LIB_PATH: &str = "/home/joaogabriel/personal/programming/misc/slur/std";
 
@@ -17,12 +16,17 @@ pub enum Flow{
 }
 
 impl PVM {
-    pub fn parse(
-        &mut self,
-        tokens: Vec<Token>,
-    ) -> Result<Flow, Box<dyn Error>>{
-        let mut iter = tokens.iter().peekable();
-        while let Some(tk) = iter.next() {
+    pub fn parse(&mut self) -> Result<Flow, Box<dyn Error>>{
+        while let Some(mut frame) = self.call_stack.pop(){
+            if frame.ip >= frame.instructions.len(){
+                continue;
+            }
+
+            let tk = frame.instructions[frame.ip].clone();
+            frame.ip += 1;
+
+            let mut pending_call: Option<CallFrame> = None;
+
             match tk {
                 Token::Quit => {
                     println!("Exiting program...");
@@ -33,21 +37,21 @@ impl PVM {
 
                     loop {
                         if !is_first {
-                            match iter.peek() {
+                            match frame.peek() {
                                 Some(&Token::NumberLit(_)) | Some(&Token::QuotedLit(_)) | Some(&Token::UnquotedLit(_)) => { }
                                 _ => break
                             }
                         }
 
-                        match iter.next() {
-                            Some(Token::NumberLit(n)) => self.stack.push(RuntimeValue::Int(*n)),
+                        match frame.next() {
+                            Some(Token::NumberLit(n)) => self.data_stack.push(RuntimeValue::Int(*n)),
                             Some(Token::QuotedLit(s)) => {
                                 let trimmed = s.trim_matches('\"').to_string();
-                                self.stack.push(RuntimeValue::String(Rc::new(trimmed)));
+                                self.data_stack.push(RuntimeValue::String(Rc::new(trimmed)));
                             }
                             Some(Token::UnquotedLit(s)) => {
                                 if self.elements.contains_key(s) {
-                                    self.stack.push(self.elements.remove(s).unwrap_or_else(|| unreachable!("push <var>")));
+                                    self.data_stack.push(self.elements.remove(s).unwrap_or_else(|| unreachable!("push <var>")));
                                 } else {
                                     ret_error!(UndeclaredObject { t: "variable", name: s })
                                 }
@@ -60,51 +64,51 @@ impl PVM {
                     }
                 }
                 Token::Add => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "add", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "add", exp: 2_usize, got: self.data_stack.len() })
                     }
-                    let a = self.stack.pop().unwrap();
-                    let b = self.stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
+                    let b = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
-                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.stack.push(a + b),
+                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a + b),
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
                     }
                 }
                 Token::Mul =>{
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "mul", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "mul", exp: 2_usize, got: self.data_stack.len() })
                     }
-                    let a = self.stack.pop().unwrap();
-                    let b = self.stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
+                    let b = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
-                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.stack.push(a * b),
+                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a * b),
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
                     }
                 }
                 Token::Sub =>{
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "sub", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "sub", exp: 2_usize, got: self.data_stack.len() })
                     }
-                    let a = self.stack.pop().unwrap();
-                    let b = self.stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
+                    let b = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
-                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.stack.push(a - b),
+                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a - b),
                         (type1, type2) => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
                     }
                 }
                 Token::Div =>{
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "div", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "div", exp: 2_usize, got: self.data_stack.len() })
                     }
-                    let a = self.stack.pop().unwrap();
-                    let b = self.stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
+                    let b = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
-                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.stack.push(a / b),
+                        (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a / b),
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
                     }
                 }
                 Token::Pop => {
-                    let p = self.stack.pop();
+                    let p = self.data_stack.pop();
                     match p{
                         Some(p) => {
                             match p{
@@ -116,50 +120,50 @@ impl PVM {
                     }
                 }
                 Token::Drop => {
-                    if self.stack.is_empty(){
+                    if self.data_stack.is_empty(){
                         ret_error!(StackEmpty)
                     }
-                    self.stack.pop().unwrap_or_else(|| unreachable!("drop"));
+                    self.data_stack.pop().unwrap_or_else(|| unreachable!("drop"));
                 }
                 Token::Neg => {
-                    if let Some(n) = self.stack.pop(){
+                    if let Some(n) = self.data_stack.pop(){
                         match n {
-                            RuntimeValue::Int(_) => self.stack.push(-n),
+                            RuntimeValue::Int(_) => self.data_stack.push(-n),
                             other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![other])
                         }
                     } else {
-                        ret_error!(UnsufficientValues { op: "neg", exp: 1_usize, got: self.stack.len() })
+                        ret_error!(UnsufficientValues { op: "neg", exp: 1_usize, got: self.data_stack.len() })
                     }
                 }
                 Token::Dup => {
-                    if let Some(&Token::UnquotedLit(s)) = iter.peek(){
-                        iter.next();
-                        if self.elements.contains_key(s){
-                            self.stack.push(self.elements[s].clone());
+                    if let Some(Token::UnquotedLit(s)) = frame.peek().cloned(){
+                        frame.next();
+                        if self.elements.contains_key(&s){
+                            self.data_stack.push(self.elements[&s].clone());
                             continue;
                         } else {
                             ret_error!(UndeclaredObject { t: "variable", name: s })
                         }
                     }
-                    if self.stack.is_empty() {
-                        ret_error!(UnsufficientValues { op: "dup", exp: 1_usize, got: self.stack.len() })
+                    if self.data_stack.is_empty() {
+                        ret_error!(UnsufficientValues { op: "dup", exp: 1_usize, got: self.data_stack.len() })
                     }
 
-                    self.stack.push(self.stack[self.stack.len() - 1].clone())
+                    self.data_stack.push(self.data_stack[self.data_stack.len() - 1].clone())
                 }
-                Token::NumberLit(num) => ret_error!(InvalidToken, Token::NumberLit(*num)),
+                Token::NumberLit(num) => ret_error!(InvalidToken, Token::NumberLit(num)),
                 Token::QuotedLit(s) => ret_error!(InvalidToken, Token::QuotedLit(s.to_string())),
                 Token::UnquotedLit(s) => ret_error!(InvalidToken, Token::UnquotedLit(s.to_string())),
                 Token::Var => {
-                    let next_token = iter.next();
+                    let next_token = frame.next();
                     self.parse_var(next_token)?;
                 }
                 Token::Into => {
-                    let next_keyword = iter.next();
+                    let next_keyword = frame.next();
                     let var_name: String = {
                         match next_keyword {
                             Some(Token::Var) => {
-                                let str_next = iter.next();
+                                let str_next = frame.next();
                                 self.parse_var(str_next)?;
                                 match str_next{
                                     Some(Token::UnquotedLit(s)) => s.to_string(),
@@ -170,51 +174,51 @@ impl PVM {
                             other => ret_error!(UnexpectedToken, [Var, UnquotedLit], other),
                         }
                     };
-                    match self.stack.pop(){
+                    match self.data_stack.pop(){
                         Some(n) => self.elements.insert(var_name, n),
                         None => ret_error!(StackEmpty)
                     };
                 }
                 Token::Swap => {
-                    if self.stack.len() < 2{
-                        ret_error!(UnsufficientValues { op: "Swap", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2{
+                        ret_error!(UnsufficientValues { op: "Swap", exp: 2_usize, got: self.data_stack.len() })
                     }
-                    let n1 = self.stack.pop().unwrap_or_else(|| unreachable!("Swap"));
-                    let n2 = self.stack.pop().unwrap_or_else(|| unreachable!("Swap"));
+                    let n1 = self.data_stack.pop().unwrap_or_else(|| unreachable!("Swap"));
+                    let n2 = self.data_stack.pop().unwrap_or_else(|| unreachable!("Swap"));
 
-                    self.stack.push(n1);
-                    self.stack.push(n2);
+                    self.data_stack.push(n1);
+                    self.data_stack.push(n2);
                 }
-                Token::Rot => self.stack.reverse(),
+                Token::Rot => self.data_stack.reverse(),
                 Token::Over => {
-                    if self.stack.len() < 2{
-                        ret_error!(UnsufficientValues { op: "over", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2{
+                        ret_error!(UnsufficientValues { op: "over", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    self.stack.push(self.stack[self.stack.len() - 2].clone());
+                    self.data_stack.push(self.data_stack[self.data_stack.len() - 2].clone());
                 }
-                Token::BoolLit(b) => self.stack.push(RuntimeValue::Bool(*b)),
+                Token::BoolLit(b) => self.data_stack.push(RuntimeValue::Bool(b)),
                 Token::Eq => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "eq", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "eq", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    let b = self.stack.pop().unwrap_or_else(|| unreachable!("eq"));
-                    let a = self.stack.pop().unwrap_or_else(|| unreachable!("eq"));
+                    let b = self.data_stack.pop().unwrap_or_else(|| unreachable!("eq"));
+                    let a = self.data_stack.pop().unwrap_or_else(|| unreachable!("eq"));
 
-                    self.stack.push(RuntimeValue::Bool(a == b));
+                    self.data_stack.push(RuntimeValue::Bool(a == b));
                 }
                 Token::Gt => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "gt", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "gt", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    let b = self.stack.pop().unwrap_or_else(|| unreachable!("gt"));
-                    let a = self.stack.pop().unwrap_or_else(|| unreachable!("gt"));
+                    let b = self.data_stack.pop().unwrap_or_else(|| unreachable!("gt"));
+                    let a = self.data_stack.pop().unwrap_or_else(|| unreachable!("gt"));
 
                     match (a, b) {
                         (RuntimeValue::Int(n1), RuntimeValue::Int(n2)) => {
-                            self.stack.push(RuntimeValue::Bool(n1 > n2));
+                            self.data_stack.push(RuntimeValue::Bool(n1 > n2));
                         }
                         (type1, type2) => {
                             ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
@@ -222,16 +226,16 @@ impl PVM {
                     }
                 }
                 Token::Lt => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "lt", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "lt", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    let b = self.stack.pop().unwrap_or_else(|| unreachable!("lt"));
-                    let a = self.stack.pop().unwrap_or_else(|| unreachable!("lt"));
+                    let b = self.data_stack.pop().unwrap_or_else(|| unreachable!("lt"));
+                    let a = self.data_stack.pop().unwrap_or_else(|| unreachable!("lt"));
 
                     match (a, b) {
                         (RuntimeValue::Int(n1), RuntimeValue::Int(n2)) => {
-                            self.stack.push(RuntimeValue::Bool(n1 < n2));
+                            self.data_stack.push(RuntimeValue::Bool(n1 < n2));
                         }
                         (type1, type2) => {
                             ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
@@ -239,143 +243,152 @@ impl PVM {
                     }
                 }
                 Token::If => {
-                    if self.stack.is_empty() {
-                        ret_error!(UnsufficientValues { op: "if", exp: 1_usize, got: self.stack.len() })
+                    if self.data_stack.is_empty() {
+                        ret_error!(UnsufficientValues { op: "if", exp: 1_usize, got: self.data_stack.len() })
                     }
-                    let a = self.stack.pop().unwrap_or_else(|| unreachable!("if"));
+                    let a = self.data_stack.pop().unwrap_or_else(|| unreachable!("if"));
 
                     let condition = match a {
                         RuntimeValue::Bool(c) => c,
                         other => ret_error!(UnexpectedTypes,[RuntimeValue::Bool(true)], vec![other])
                     };
 
-                    expect_open_curly(iter.next())?;
+                    expect_open_curly(frame.next())?;
 
-                    let if_branch_vec = collect_tokens_into_block(&mut iter);
-                    if let Some(&Token::Else) = iter.peek() {
-                        iter.next();
+                    let if_branch_vec = collect_tokens_into_block(&mut frame);
+                    if let Some(&Token::Else) = frame.peek() {
+                        frame.next();
 
-                        expect_open_curly(iter.next())?;
+                        expect_open_curly(frame.next())?;
 
-                        let else_branch_vec = collect_tokens_into_block(&mut iter);
+                        let else_branch_vec = collect_tokens_into_block(&mut frame);
 
                         if condition {
-                            if let Flow::Return = self.parse(if_branch_vec)?{
-                                return Ok(Flow::Return);
-                            }
+                            pending_call = Some(CallFrame {
+                                instructions: if_branch_vec,
+                                ip: 0,
+                                frame_pointer: 0
+                            })
                         } else {
-                            if let Flow::Return = self.parse(else_branch_vec)?{
-                                return Ok(Flow::Return);
-                            }
+                            pending_call = Some(CallFrame {
+                                instructions: else_branch_vec,
+                                ip: 0,
+                                frame_pointer: 0
+                            })
                         }
                     } else {
-                        if condition && let Flow::Return = self.parse(if_branch_vec)? {
-                            return Ok(Flow::Return);
-                        }
+                        pending_call = Some(CallFrame {
+                            instructions: if_branch_vec,
+                            ip: 0,
+                            frame_pointer: 0
+                        })
                     }
                 }
                 Token::Else => ret_error!(InvalidToken, Token::Else),
                 Token::OpenCurly => { },
                 Token::CloseCurly => { },
                 Token::And => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "and", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "and", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    let b = self.stack.pop().unwrap_or_else(|| unreachable!("and"));
-                    let a = self.stack.pop().unwrap_or_else(|| unreachable!("and"));
+                    let b = self.data_stack.pop().unwrap_or_else(|| unreachable!("and"));
+                    let a = self.data_stack.pop().unwrap_or_else(|| unreachable!("and"));
 
                     match (a, b) {
                         (RuntimeValue::Bool(b1), RuntimeValue::Bool(b2)) => {
-                            self.stack.push(RuntimeValue::Bool(b1 && b2));
+                            self.data_stack.push(RuntimeValue::Bool(b1 && b2));
                         }
                         (type1, type2) => ret_error!(UnexpectedTypes, [RuntimeValue::Bool(false), RuntimeValue::Bool(false)], vec![type1, type2])
                     }
                 }
                 Token::Or => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "or", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "or", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    let b = self.stack.pop().unwrap_or_else(|| unreachable!("or"));
-                    let a = self.stack.pop().unwrap_or_else(|| unreachable!("or"));
+                    let b = self.data_stack.pop().unwrap_or_else(|| unreachable!("or"));
+                    let a = self.data_stack.pop().unwrap_or_else(|| unreachable!("or"));
 
                     match (a, b) {
                         (RuntimeValue::Bool(b1), RuntimeValue::Bool(b2)) => {
-                            self.stack.push(RuntimeValue::Bool(b1 || b2));
+                            self.data_stack.push(RuntimeValue::Bool(b1 || b2));
                         }
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Bool(false), RuntimeValue::Bool(false)], vec![type1, type2])
                     }
                 }
                 Token::Not => {
-                    if self.stack.is_empty(){
+                    if self.data_stack.is_empty(){
                         ret_error!(StackEmpty)
                     }
 
-                    match self.stack.pop().unwrap_or_else(|| unreachable!("not")){
-                        RuntimeValue::Bool(b) => self.stack.push(RuntimeValue::Bool(!b)),
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("not")){
+                        RuntimeValue::Bool(b) => self.data_stack.push(RuntimeValue::Bool(!b)),
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Bool(false)], vec![other])
                     }
                 }
                 Token::FunDeclaration(fun_name) => {
-                    expect_open_curly(iter.next())?;
-                    let fun_block = collect_tokens_into_block(&mut iter);
-                    if self.elements.contains_key(fun_name){
+                    expect_open_curly(frame.next())?;
+                    let fun_block = collect_tokens_into_block(&mut frame);
+                    if self.elements.contains_key(&fun_name){
                         ret_error!(RedeclarationObject { t: "function", name: fun_name })
                     }
                     self.elements.insert(fun_name.to_string(), RuntimeValue::Block(fun_block));
                 }
                 Token::FunCall(fun_name) => {
-                    if !self.elements.contains_key(fun_name) {
+                    if !self.elements.contains_key(&fun_name) {
                         ret_error!(UndeclaredObject { t: "function", name: fun_name })
                     }
-                    match &self.elements[fun_name]{
+                    match &self.elements[&fun_name]{
                         RuntimeValue::Block(tokens) => {
-                            let tokens_clone = tokens.clone();
-                            self.parse(tokens_clone)?;
+                            pending_call = Some(CallFrame {
+                                instructions: tokens.clone(),
+                                ip: 0,
+                                frame_pointer: 0
+                            })
                         }
                         _ => {
-                            let e = self.elements[fun_name].clone();
-                            self.stack.push(e);
+                            let e = self.elements[&fun_name].clone();
+                            self.data_stack.push(e);
                         }
                     };
                 }
-                Token::Len => self.stack.push(RuntimeValue::Int(self.stack.len().try_into().unwrap())),
+                Token::Len => self.data_stack.push(RuntimeValue::Int(self.data_stack.len().try_into().unwrap())),
                 Token::Split => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "Split", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "Split", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    let pattern = self.stack.pop().unwrap_or_else(|| unreachable!("split"));
-                    let source = self.stack.pop().unwrap_or_else(|| unreachable!("split"));
+                    let pattern = self.data_stack.pop().unwrap_or_else(|| unreachable!("split"));
+                    let source = self.data_stack.pop().unwrap_or_else(|| unreachable!("split"));
                     if let Some((left, right)) = source.to_string().split_once(&pattern.to_string()) {
-                        self.stack.push(RuntimeValue::String(Rc::new(right.to_string())));
-                        self.stack.push(RuntimeValue::String(Rc::new(left.to_string())));
+                        self.data_stack.push(RuntimeValue::String(Rc::new(right.to_string())));
+                        self.data_stack.push(RuntimeValue::String(Rc::new(left.to_string())));
                     }
                 }
                 Token::SplitB => {
-                    if self.stack.len() < 2 {
-                        ret_error!(UnsufficientValues { op: "Split", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2 {
+                        ret_error!(UnsufficientValues { op: "Split", exp: 2_usize, got: self.data_stack.len() })
                     }
-                    let pattern = self.stack.pop().unwrap_or_else(|| unreachable!("split"));
-                    let source = self.stack.pop().unwrap_or_else(|| unreachable!("split"));
+                    let pattern = self.data_stack.pop().unwrap_or_else(|| unreachable!("split"));
+                    let source = self.data_stack.pop().unwrap_or_else(|| unreachable!("split"));
                     let source_str = source.to_string();
                     let result = source_str.split_once(&pattern.to_string());
                     match result{
                         Some((left, right)) =>{
-                            self.stack.push(RuntimeValue::String(Rc::new(right.to_string())));
-                            self.stack.push(RuntimeValue::String(Rc::new(left.to_string())));
-                            self.stack.push(RuntimeValue::Bool(true))
+                            self.data_stack.push(RuntimeValue::String(Rc::new(right.to_string())));
+                            self.data_stack.push(RuntimeValue::String(Rc::new(left.to_string())));
+                            self.data_stack.push(RuntimeValue::Bool(true))
                         }
                         None => {
-                            self.stack.push(source);
-                            self.stack.push(RuntimeValue::Bool(false));
+                            self.data_stack.push(source);
+                            self.data_stack.push(RuntimeValue::Bool(false));
                         }
                     }
                 }
                 Token::Ret => return Ok(Flow::Return),
                 Token::Include => {
-                    match iter.next(){
+                    match frame.next(){
                         Some(Token::QuotedLit(_s)) => {
 
                         },
@@ -390,7 +403,11 @@ impl PVM {
                             match read_to_string(&target_path) {
                                 Ok(content) => {
                                     let tokens = tokenize(content);
-                                    self.parse(tokens)?;
+                                    pending_call = Some(CallFrame{
+                                        instructions: tokens,
+                                        ip: 0,
+                                        frame_pointer: self.data_stack.len()
+                                    })
                                 }
                                 Err(_) => ret_error!(FileNotFound { file: s.clone(), reason: "No module with this name." })
                             }
@@ -399,16 +416,16 @@ impl PVM {
                     }
                 }
                 Token::ReadLine => {
-                    if self.stack.len() < 2{
-                        ret_error!(UnsufficientValues { op: "readline", exp: 2_usize, got: self.stack.len() })
+                    if self.data_stack.len() < 2{
+                        ret_error!(UnsufficientValues { op: "readline", exp: 2_usize, got: self.data_stack.len() })
                     }
 
-                    let line_num: usize = match self.stack.pop().unwrap_or_else(|| unreachable!("readline")){
+                    let line_num: usize = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
                         RuntimeValue::Int(x) if x > 0 => x as usize,
                         RuntimeValue::Int(x) => ret_error!(IndexOutOfRange, x),
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![other])
                     };
-                    let path = match self.stack.pop().unwrap_or_else(|| unreachable!("readline")){
+                    let path = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
                         RuntimeValue::String(s) => s,
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::String(Rc::new("".to_string()))], vec![other])
                     };
@@ -418,7 +435,7 @@ impl PVM {
 
                     if let Some(line) = reader.lines().nth(line_num - 1){
                         match line {
-                            Ok(l) => self.stack.push(RuntimeValue::String(Rc::new(l))),
+                            Ok(l) => self.data_stack.push(RuntimeValue::String(Rc::new(l))),
                             _ => ret_error!(LineOutOfRange)
                         }
                     } else {
@@ -426,17 +443,17 @@ impl PVM {
                     }
                 }
                 Token::ReadLineB => {
-                    if self.stack.len() < 2{
-                        self.stack.push(RuntimeValue::Bool(false));
+                    if self.data_stack.len() < 2{
+                        self.data_stack.push(RuntimeValue::Bool(false));
                         return Ok(Flow::Next);
                     }
 
-                    let line_num: usize = match self.stack.pop().unwrap_or_else(|| unreachable!("readline")){
+                    let line_num: usize = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
                         RuntimeValue::Int(x) if x > 0 => x as usize,
                         RuntimeValue::Int(x) => ret_error!(IndexOutOfRange, x),
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![other])
                     };
-                    let path = match self.stack.pop().unwrap_or_else(|| unreachable!("readline")){
+                    let path = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
                         RuntimeValue::String(s) => s,
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::String(Rc::new("".to_string()))], vec![other])
                     };
@@ -446,98 +463,104 @@ impl PVM {
 
                     match reader.lines().nth(line_num - 1){
                         Some(Ok(l)) => {
-                            self.stack.push(RuntimeValue::String(Rc::new(l)));
-                            self.stack.push(RuntimeValue::Bool(true));
+                            self.data_stack.push(RuntimeValue::String(Rc::new(l)));
+                            self.data_stack.push(RuntimeValue::Bool(true));
                         }
-                        _ => self.stack.push(RuntimeValue::Bool(false))
+                        _ => self.data_stack.push(RuntimeValue::Bool(false))
                     }
                 }
                 Token::Int => {
-                    if self.stack.is_empty(){
+                    if self.data_stack.is_empty(){
                         ret_error!(StackEmpty)
                     }
 
-                    match self.stack.pop().unwrap_or_else(|| unreachable!("intb")){
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("intb")){
                         RuntimeValue::String(s) => match (*s).parse::<i64>(){
-                            Ok(n) => self.stack.push(RuntimeValue::Int(n)),
+                            Ok(n) => self.data_stack.push(RuntimeValue::Int(n)),
                             Err(_) => ret_error!(ParseError, (*s).clone())
                         }
                         RuntimeValue::Bool(b) => if b {
-                            self.stack.push(RuntimeValue::Int(1));
+                            self.data_stack.push(RuntimeValue::Int(1));
                         } else {
-                            self.stack.push(RuntimeValue::Int(0));
+                            self.data_stack.push(RuntimeValue::Int(0));
                         }
-                        RuntimeValue::Int(i) => self.stack.push(RuntimeValue::Int(i)),
+                        RuntimeValue::Int(i) => self.data_stack.push(RuntimeValue::Int(i)),
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), RuntimeValue::String(Rc::new("".to_string()))], vec![other])
                     };
                 }
                 Token::IntB => {
-                    if self.stack.is_empty(){
+                    if self.data_stack.is_empty(){
                         ret_error!(StackEmpty)
                     }
 
-                    match self.stack.pop().unwrap_or_else(|| unreachable!("intb")){
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("intb")){
                         RuntimeValue::String(s) => match (*s).parse::<i64>(){
                             Ok(n) => {
-                                self.stack.push(RuntimeValue::Int(n));
-                                self.stack.push(RuntimeValue::Bool(true));
+                                self.data_stack.push(RuntimeValue::Int(n));
+                                self.data_stack.push(RuntimeValue::Bool(true));
                             }
-                            Err(_) => self.stack.push(RuntimeValue::Bool(false)),
+                            Err(_) => self.data_stack.push(RuntimeValue::Bool(false)),
                         }
                         RuntimeValue::Bool(b) => if b {
-                            self.stack.push(RuntimeValue::Int(1));
-                            self.stack.push(RuntimeValue::Bool(true));
+                            self.data_stack.push(RuntimeValue::Int(1));
+                            self.data_stack.push(RuntimeValue::Bool(true));
                         } else {
-                            self.stack.push(RuntimeValue::Int(0));
-                            self.stack.push(RuntimeValue::Bool(false));
+                            self.data_stack.push(RuntimeValue::Int(0));
+                            self.data_stack.push(RuntimeValue::Bool(false));
                         }
                         RuntimeValue::Int(i) =>{
-                            self.stack.push(RuntimeValue::Int(i));
-                            self.stack.push(RuntimeValue::Bool(true));
+                            self.data_stack.push(RuntimeValue::Int(i));
+                            self.data_stack.push(RuntimeValue::Bool(true));
                         }
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), RuntimeValue::String(Rc::new("".to_string()))], vec![other])
                     };
                 }
                 Token::Clear => {
-                    if self.stack.is_empty(){
+                    if self.data_stack.is_empty(){
                         ret_error!(StackEmpty)
                     }
-                    self.stack.clear();
+                    self.data_stack.clear();
                 }
                 Token::Roll => {
-                    if self.stack.len() < 2{
-                        ret_error!(UnsufficientValues { op: "Roll", exp: 2_usize, got: self.stack.len() });
+                    if self.data_stack.len() < 2{
+                        ret_error!(UnsufficientValues { op: "Roll", exp: 2_usize, got: self.data_stack.len() });
                     }
 
-                    let index = match self.stack.pop().unwrap_or_else(||unreachable!("Roll")){
+                    let index = match self.data_stack.pop().unwrap_or_else(||unreachable!("Roll")){
                         RuntimeValue::Int(i) => i as usize,
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![other])
                     };
 
-                    if index > self.stack.len(){
-                        ret_error!(StackIndexOutOfRange { op: "Roll".to_string(), index: index, stack_len: self.stack.len() })
+                    if index > self.data_stack.len(){
+                        ret_error!(StackIndexOutOfRange { op: "Roll".to_string(), index: index, stack_len: self.data_stack.len() })
                     }
 
-                    let result = self.stack.remove(self.stack.len() - index);
-                    self.stack.push(result);
+                    let result = self.data_stack.remove(self.data_stack.len() - index);
+                    self.data_stack.push(result);
                 }
                 Token::Pick => {
-                    if self.stack.len() < 2{
-                        ret_error!(UnsufficientValues { op: "Pick", exp: 2_usize, got: self.stack.len() });
+                    if self.data_stack.len() < 2{
+                        ret_error!(UnsufficientValues { op: "Pick", exp: 2_usize, got: self.data_stack.len() });
                     }
 
-                    let index = match self.stack.pop().unwrap_or_else(||unreachable!("Pick")){
+                    let index = match self.data_stack.pop().unwrap_or_else(||unreachable!("Pick")){
                         RuntimeValue::Int(i) => i as usize,
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![other])
                     };
 
-                    if index > self.stack.len(){
-                        ret_error!(StackIndexOutOfRange { op: "Pick".to_string(), index: index, stack_len: self.stack.len() })
+                    if index > self.data_stack.len(){
+                        ret_error!(StackIndexOutOfRange { op: "Pick".to_string(), index: index, stack_len: self.data_stack.len() })
                     }
 
-                    self.stack.push(self.stack[self.stack.len() - index].clone());
+                    self.data_stack.push(self.data_stack[self.data_stack.len() - index].clone());
                 }
             }
+            self.call_stack.push(frame);
+
+            if let Some(new_frame) = pending_call {
+                self.call_stack.push(new_frame);
+            }
+
         }
         Ok(Flow::Next)
     }
@@ -576,26 +599,28 @@ fn expect_open_curly(nt: Option<&Token>) -> Result<(), Box<dyn Error>>{
     }
 }
 
-fn collect_tokens_into_block(iter: &mut Peekable<std::slice::Iter<Token>>) -> Vec<Token>{
+fn collect_tokens_into_block(frame: &mut CallFrame) -> Vec<Token>{
     let mut block_vector: Vec<Token> = vec![];
     let mut brace_depth = 1;
 
-    for inner_tk in iter {
-        match inner_tk {
+    while frame.ip < frame.instructions.len() {
+        let tk = frame.instructions[frame.ip].clone();
+        frame.ip += 1;
+        match tk {
             Token::OpenCurly => {
                 brace_depth += 1;
-                block_vector.push(inner_tk.clone());
+                block_vector.push(tk.clone());
             }
             Token::CloseCurly => {
                 brace_depth -= 1;
                 if brace_depth == 0 {
                     break;
                 } else {
-                    block_vector.push(inner_tk.clone());
+                    block_vector.push(tk.clone());
                 }
             }
             _ => {
-                block_vector.push(inner_tk.clone());
+                block_vector.push(tk.clone());
             }
         }
     };
