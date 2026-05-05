@@ -79,7 +79,7 @@ fn print_stack(stack: &[RuntimeValue]){
         .for_each(|(i, x)| {
             match x{
                 RuntimeValue::String(s) => print!("\"{s}\""),
-                x => print!("{x}") // TODO: não coloca virgulas caso o mesmo numero
+                x => print!("{x}")
             }
             if i != stack.len() - 1{
                 print!(", ");
