@@ -78,12 +78,13 @@ fn print_stack(stack: &[RuntimeValue]){
     print!("stack: [");
     stack
         .iter()
-        .for_each(|x| {
+        .enumerate()
+        .for_each(|(i, x)| {
             match x{
                 RuntimeValue::String(s) => print!("\"{s}\""),
                 x => print!("{x}") // TODO: não coloca virgulas caso o mesmo numero
             }
-            if let Some(l) = stack.last() && x != l{
+            if i != stack.len() - 1{
                 print!(", ");
             }
         });

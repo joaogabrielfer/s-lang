@@ -2,12 +2,12 @@ use std::process::exit;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token{
-    Push, Pop, Drop, ReadLine, ReadLineB,
+    Push, Pop, Drop, ReadLine, ReadLineB, Clear,
     Add, Sub, Mul, Div, Neg, Dup,
     Len, Split, SplitB,
     Var, Into,
     Int, IntB,
-    Swap, Rot, Over,
+    Swap, Rot, Over, Roll, Pick,
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
     If, Else,
@@ -95,6 +95,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "drop"      => Token::Drop,
                     "readline"  => Token::ReadLine,
                     "readlineb" => Token::ReadLineB,
+                    "clear"     => Token::Clear,
                     "add"       => Token::Add,
                     "sub"       => Token::Sub,
                     "mul"       => Token::Mul,
@@ -109,6 +110,8 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "len"       => Token::Len,
                     "rot"       => Token::Rot,
                     "over"      => Token::Over,
+                    "roll"      => Token::Roll,
+                    "pick"      => Token::Pick,
                     "split"     => Token::Split,
                     "splitb"    => Token::SplitB,
                     "eq"        => Token::Eq,

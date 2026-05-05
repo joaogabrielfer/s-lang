@@ -1,8 +1,17 @@
+use std::{collections::HashMap, rc::Rc};
+use crate::lexer::Token;
+
+pub struct PVM{
+    stack: Vec<Token>,
+    elements: HashMap<String, RuntimeValue>
+}
+
 #[derive(Clone, PartialEq)]
 pub enum RuntimeValue {
     Int(i64),
     Bool(bool),
     String(String),
+    Block(Vec<Token>),
 }
 
 impl RuntimeValue {
@@ -11,6 +20,7 @@ impl RuntimeValue {
             RuntimeValue::Int(_) => "int",
             RuntimeValue::Bool(_) => "bool",
             RuntimeValue::String(_) => "str",
+            RuntimeValue::Block(_) => "block",
         }
     }
 }
@@ -31,6 +41,7 @@ impl std::fmt::Display for RuntimeValue {
             RuntimeValue::Int(n) => write!(f, "{n}"),
             RuntimeValue::String(s) => write!(f, "{s}"),
             RuntimeValue::Bool(b) => write!(f, "{b}"),
+            RuntimeValue::Block(b) => write!(f, "{:?}", b),
         }
     }
 }

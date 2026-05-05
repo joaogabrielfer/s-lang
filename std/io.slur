@@ -4,8 +4,6 @@ fun splitall {
 	push sep drop
 }
 
-;; var sep =  " " ;;
-;; "2 3" "1"true;;
 fun __splitall{
 	dup sep
 	splitb
