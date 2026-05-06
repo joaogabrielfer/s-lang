@@ -12,7 +12,7 @@ pub enum Token{
     OpenParen, CloseParen,
     If, Else,
     And, Or, Not,
-    FunDeclaration(String), FunCall(String), Eval,
+    ElementCall(String), Eval,
     BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i64),
     Quit, Ret,
     Include,
@@ -21,50 +21,49 @@ pub enum Token{
 impl Token {
     pub fn type_name(&self) -> &'static str {
         match self {
-            Token::Push => "Push",
-            Token::Pop => "Pop",
-            Token::Drop => "Drop",
-            Token::ReadLine => "ReadLine",
-            Token::ReadLineB => "ReadLineB",
-            Token::Clear => "Clear",
-            Token::Add => "Add",
-            Token::Sub => "Sub",
-            Token::Mul => "Mul",
-            Token::Div => "Div",
-            Token::Neg => "Neg",
-            Token::Dup => "Dup",
-            Token::Len => "Len",
-            Token::SplitB => "SplitB",
-            Token::Var => "Var",
-            Token::Into => "Into",
-            Token::AsIntB => "AsIntB",
-            Token::Swap => "Swap",
-            Token::Rot => "Rot",
-            Token::Over => "Over",
-            Token::Roll => "Roll",
-            Token::Pick => "Pick",
-            Token::Eq => "Eq",
-            Token::Gt => "Gt",
-            Token::Lt => "Lt",
-            Token::OpenCurly => "OpenCurly",
-            Token::CloseCurly => "CloseCurly",
-            Token::OpenParen => "OpenParen",
-            Token::CloseParen => "CloseParen",
-            Token::If => "If",
-            Token::Else => "Else",
-            Token::And => "And",
-            Token::Or => "Or",
-            Token::Not => "Not",
-            Token::FunDeclaration(_) => "FunDeclaration",
-            Token::FunCall(_) => "FunCall",
-            Token::Eval => "Eval",
-            Token::BoolLit(_) => "BoolLit",
-            Token::QuotedLit(_) => "QuotedLit",
+            Token::Push           => "Push",
+            Token::Pop            => "Pop",
+            Token::Drop           => "Drop",
+            Token::ReadLine       => "ReadLine",
+            Token::ReadLineB      => "ReadLineB",
+            Token::Clear          => "Clear",
+            Token::Add            => "Add",
+            Token::Sub            => "Sub",
+            Token::Mul            => "Mul",
+            Token::Div            => "Div",
+            Token::Neg            => "Neg",
+            Token::Dup            => "Dup",
+            Token::Len            => "Len",
+            Token::SplitB         => "SplitB",
+            Token::Var            => "Var",
+            Token::Into           => "Into",
+            Token::AsIntB         => "AsIntB",
+            Token::Swap           => "Swap",
+            Token::Rot            => "Rot",
+            Token::Over           => "Over",
+            Token::Roll           => "Roll",
+            Token::Pick           => "Pick",
+            Token::Eq             => "Eq",
+            Token::Gt             => "Gt",
+            Token::Lt             => "Lt",
+            Token::OpenCurly      => "OpenCurly",
+            Token::CloseCurly     => "CloseCurly",
+            Token::OpenParen      => "OpenParen",
+            Token::CloseParen     => "CloseParen",
+            Token::If             => "If",
+            Token::Else           => "Else",
+            Token::And            => "And",
+            Token::Or             => "Or",
+            Token::Not            => "Not",
+            Token::ElementCall(_) => "ElementCall",
+            Token::Eval           => "Eval",
+            Token::BoolLit(_)     => "BoolLit",
+            Token::QuotedLit(_)   => "QuotedLit",
             Token::UnquotedLit(_) => "UnquotedLit",
-            Token::NumberLit(_) => "NumberLit",
-            Token::Quit => "Quit",
-            Token::Ret => "Ret",
-            Token::Include => "Include",
+            Token::NumberLit(_)   => "NumberLit",
+            Token::Quit           => "Quit",
+            Token::Ret            => "Ret",
+            Token::Include        => "Include",
         }
     }
 }
@@ -122,6 +121,18 @@ pub fn tokenize(content: String) -> Vec<Token> {
                 }
                 tokens.push(Token::QuotedLit(string_val));
             }
+            '#' => {
+                chars.next();
+                let mut elm = String::new();
+                while let Some(&nc) = chars.peek() {
+                    if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' {
+                        break;
+                    }
+                    elm.push(nc);
+                    chars.next();
+                }
+                tokens.push(Token::ElementCall(elm));
+            }
             _ => {
                 let mut word = String::new();
 
@@ -148,7 +159,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "dup"       => Token::Dup,
                     "var"       => Token::Var,
                     "into"      => Token::Into,
-                    "asintb"    => Token::AsIntB,
+                    "as_intb"    => Token::AsIntB,
                     "swap"      => Token::Swap,
                     "len"       => Token::Len,
                     "rot"       => Token::Rot,
@@ -170,21 +181,6 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "eval"      => Token::Eval,
                     "ret"       => Token::Ret,
                     "include"   => Token::Include,
-                    "fun" => {
-                        while let Some(&wc) = chars.peek() {
-                            if wc.is_whitespace() { chars.next(); } else { break; }
-                        }
-
-                        let mut fun_name = String::new();
-                        while let Some(&nc) = chars.peek() {
-                            if nc.is_whitespace() || nc == '{' || nc == '}' { break; }
-                            fun_name.push(nc);
-                            chars.next();
-                        }
-
-                        Token::FunDeclaration(fun_name)
-                    }
-
                     "call"  => {
                         while let Some(&wc) = chars.peek() {
                             if wc.is_whitespace() { chars.next(); } else { break; }
@@ -197,7 +193,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                             chars.next();
                         }
 
-                        Token::FunCall(fun_name)
+                        Token::ElementCall(fun_name)
                     }
 
                     _ => {

@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::error::{LangError, ret_error};
 use crate::lexer::{Token, tokenize};
-use crate::value::{self, CallFrame, PVM, RuntimeValue, RuntimeValueT};
+use crate::value::{self, CallFrame, Element, PVM, RuntimeValue, RuntimeValueT, default_runtime_function};
 
 pub const STD_LIB_PATH: &str = "/home/joaogabriel/personal/programming/misc/slur/std";
 
@@ -53,10 +53,12 @@ impl PVM {
                                 if self.elements.contains_key(s) {
                                     match self.elements.remove(s).unwrap_or_else(|| unreachable!("push <var>")){
                                         value::Element::Var(runtime_value) => self.data_stack.push(runtime_value),
-                                        value::Element::Function { args_types, block, return_types } => {
-                                            self.data_stack.push(RuntimeValue::ArgumentsBlock(args_types));
-                                            self.data_stack.push(RuntimeValue::ReturnTypesBlock(return_types));
-                                            self.data_stack.push(RuntimeValue::Block(block));
+                                        value::Element::Function { arguments_t: args_types, block, return_t: return_types } => {
+                                            self.data_stack.push(RuntimeValue::Function {
+                                                arguments_t: args_types,
+                                                return_t: return_types,
+                                                block
+                                            })
                                         }
                                     }
                                 } else {
@@ -141,15 +143,6 @@ impl PVM {
                     }
                 }
                 Token::Dup => {
-                    // if let Some(Token::UnquotedLit(s)) = frame.peek().cloned(){
-                    //     frame.next();
-                    //     if self.elements.contains_key(&s){
-                    //         self.data_stack.push(self.elements[&s].clone());
-                    //         continue;
-                    //     } else {
-                    //         ret_error!(UndeclaredObject { t: "variable", name: s })
-                    //     }
-                    // }
                     if self.data_stack.is_empty() {
                         ret_error!(UnsufficientValues { op: "dup", exp: 1_usize, got: self.data_stack.len() })
                     }
@@ -164,49 +157,49 @@ impl PVM {
                     self.parse_var(next_token)?;
                 }
                 Token::Into => {
-                    let next_keyword = frame.next();
-                    let var_name: String = {
-                        match next_keyword {
-                            Some(Token::Var) => {
-                                let str_next = frame.next();
-                                self.parse_var(str_next)?;
-                                match str_next{
-                                    Some(Token::UnquotedLit(s)) => s.to_string(),
-                                    _ => unreachable!("str_next")
-                                }
-                            },
-                            Some(Token::UnquotedLit(s)) if self.elements.contains_key(s) => s.to_string(),
-                            other => ret_error!(UnexpectedToken, [Var, UnquotedLit], other),
-                        }
-                    };
-                    if self.data_stack.len() <= frame.frame_pointer{
-                        ret_error!(StackUnderflow)
-                    }
-                    let block = self.data_stack.pop().unwrap_or_else(|| unreachable!("into"));
-
-                    let args = if self.data_stack.len() > frame.frame_pointer{
-                        match self.data_stack.pop().unwrap_or_else(|| unreachable!("into")){
-                            RuntimeValue::ArgumentsBlock(args) => Some(args),
-                            v => {
-                                self.data_stack.push(v);
-                                None
-                            }
-                        }
-                    } else {
-                        ret_error!(StackUnderflow)
+                    let var_name_opt = frame.next();
+                    let var_name: String = match var_name_opt {
+                        Some(Token::UnquotedLit(s)) => s.to_string(),
+                        other => ret_error!(UnexpectedToken, [UnquotedLit], other),
                     };
 
-                    match block{
-                        RuntimeValue::Block(b) if args.is_some()=> {
-                            self.elements.insert(var_name, value::Element::Function {
-                                args_types: args.unwrap_or_else(|| unreachable!("into block")),
-                                return_types: vec![],
-                                block: b
-                            });
+                    match self.data_stack.len() - frame.frame_pointer {
+                        0..1 => ret_error!(StackUnderflow),
+                        1.. => {
+                            let var = self.data_stack.pop().unwrap_or_else(|| unreachable!("into"));
+                            match var {
+                                RuntimeValue::Function { arguments_t, return_t, block  } => self.elements.insert(var_name, Element::Function{arguments_t, return_t, block}),
+                                _ => self.elements.insert(var_name, Element::Var(var)),
+                            };
                         }
-                        other => {
-                            self.elements.insert(var_name, value::Element::Var(other));
-                        }
+                        // 2.. => {
+                        //     println!("as fn");
+                        //     let block = self.data_stack.pop().unwrap_or_else(|| unreachable!("into"));
+                        //
+                        //     let args = if self.data_stack.len() - frame.frame_pointer >= 1 {
+                        //         match self.data_stack.pop().unwrap_or_else(|| unreachable!("into")){
+                        //             RuntimeValue::Function{ arguments_t, ..} => Some(arguments_t),
+                        //             v => {
+                        //                 self.data_stack.push(v);
+                        //                 None
+                        //             }
+                        //         }
+                        //     } else {
+                        //         ret_error!(StackUnderflow)
+                        //     };
+                        //     match block{
+                        //         RuntimeValue::Block(b) if args.is_some()=> {
+                        //             self.elements.insert(var_name, value::Element::Function {
+                        //                 arguments_t: args.unwrap_or_else(|| unreachable!("into block")),
+                        //                 return_t: vec![],
+                        //                 block: b
+                        //             });
+                        //         }
+                        //         other => {
+                        //             self.elements.insert(var_name, value::Element::Var(other));
+                        //         }
+                        //     }
+                        // }
                     }
                 }
                 Token::Swap => {
@@ -317,7 +310,22 @@ impl PVM {
                 Token::Else => ret_error!(InvalidToken, Token::Else),
                 Token::OpenCurly => {
                     let block = collect_tokens_into_block(&mut frame)?;
-                    self.data_stack.push(RuntimeValue::Block(block));
+                    match self.data_stack.pop() {
+                        Some(RuntimeValue::Function { arguments_t, .. }) => {
+                            self.data_stack.push(RuntimeValue::Function {
+                                arguments_t,
+                                return_t: vec![],
+                                block
+                            });
+                        }
+                        Some(other) => {
+                            self.data_stack.push(other);
+                            self.data_stack.push(RuntimeValue::Block(block));
+                        }
+                        None => {
+                            self.data_stack.push(RuntimeValue::Block(block));
+                        }
+                    }
                 }
                 Token::CloseCurly => { },
                 Token::And => {
@@ -360,56 +368,36 @@ impl PVM {
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Bool(false)], vec![other])
                     }
                 }
-                Token::FunDeclaration(fun_name) => {
-                    if fun_name.is_empty(){
+                Token::ElementCall(element_name) => {
+                    if element_name.is_empty(){
                         ret_error!(UnexpectedToken, [UnquotedLit], None::<Token>)
                     }
-                    expect_open_curly(frame.next())?;
-                    let _fun_block = collect_tokens_into_block(&mut frame)?;
-                    if self.elements.contains_key(&fun_name){
-                        ret_error!(RedeclarationObject { t: "function", name: fun_name })
-                    }
-                    // self.elements.insert(fun_name.to_string(), RuntimeValue::Block(fun_block));
-                }
-                Token::FunCall(fun_name) => {
-                    if fun_name.is_empty(){
-                        ret_error!(UnexpectedToken, [UnquotedLit], None::<Token>)
-                    }
-                    if !self.elements.contains_key(&fun_name) {
-                        ret_error!(UndeclaredObject { t: "function", name: fun_name })
+                    if !self.elements.contains_key(&element_name) {
+                        ret_error!(UndeclaredObject { t: "function", name: element_name })
                     }
 
+                    match self.elements[element_name.as_str()].clone() {
+                        Element::Var(v) => self.data_stack.push(v),
+                        Element::Function { arguments_t: args_types, block, ..} => {
+                            if self.data_stack.len() < args_types.len() {
+                                ret_error!(UnsufficientValues { op: "Call", exp: args_types.len(), got: self.data_stack.len() })
+                            }
+                            let fp = self.data_stack.len() - args_types.len();
+                            for i in fp..self.data_stack.len() {
+                                let arg_index = i - fp;
 
-                    let (args_type, _return_types, block) = match &self.elements[fun_name.as_str()]{
-                        value::Element::Function { args_types, block, return_types } => {
-                                (args_types.clone(), return_types.clone(), block.clone())
-                        }
-                        value::Element::Var(runtime_value) => {
-                            ret_error!(UnexpectedTypes, [
-                                RuntimeValue::Block(vec![]),
-                                RuntimeValue::ReturnTypesBlock(vec![]),
-                                RuntimeValue::ArgumentsBlock(vec![])
-                            ], vec![runtime_value.clone()]);
-                        }
-                    };
+                                if !self.data_stack[i].compare_type(args_types[arg_index].clone()) {
+                                    ret_error!(UnexpectedTypes, [args_types[arg_index].clone().to_runtimevalue()], vec![self.data_stack[i].clone()])
+                                }
+                            }
 
-                    if self.data_stack.len() < args_type.len(){
-                        ret_error!(UnsufficientValues { op: "Call", exp: args_type.len(), got: self.data_stack.len() })
-                    }
-
-                    let fp = self.data_stack.len() - args_type.len();
-                    for i in self.data_stack.len()-1..fp {
-                        if !self.data_stack[i].compare_type(args_type[i - fp].clone()){
-                            ret_error!(UnexpectedTypes,[args_type[i - fp].clone().to_runtimevalue()], vec![self.data_stack[fp].clone()])
+                            pending_call = Some(CallFrame {
+                                instructions: block,
+                                ip: 0,
+                                frame_pointer: fp
+                            })
                         }
                     }
-
-                    pending_call = Some(CallFrame {
-                        instructions: block,
-                        ip: 0,
-                        frame_pointer: fp
-                    })
-
                 }
                 Token::Len => self.data_stack.push(RuntimeValue::Int(self.data_stack.len().try_into().unwrap())),
                 Token::SplitB => {
@@ -583,46 +571,69 @@ impl PVM {
                 }
                 Token::OpenParen => {
                     let types = collect_tokens_into_types(&mut frame)?;
-                    self.data_stack.push(RuntimeValue::ArgumentsBlock(types));
+                    self.data_stack.push(RuntimeValue::Function{
+                        arguments_t: types,
+                        return_t: vec![],
+                        block: vec![],
+                    });
                 }
                 Token::CloseParen => ret_error!(InvalidToken, Token::CloseParen),
                 Token::Eval => {
-                    if self.data_stack.len() < 3{
-                        ret_error!(UnsufficientValues { op: "Eval", exp: 3_usize, got: self.data_stack.len() })
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
                     }
 
-                    let block = match self.data_stack.pop().unwrap_or_else(||unreachable!("eval")){
-                        RuntimeValue::Block(b) => b,
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Block(vec![])], vec![other] ),
-                    };
+                    match self.data_stack.pop().unwrap_or_else(||unreachable!("eval")){
+                        RuntimeValue::Function { arguments_t, block, .. } => {
 
-                    let _return_type = match self.data_stack.pop().unwrap_or_else(||unreachable!("eval")){
-                        RuntimeValue::ReturnTypesBlock(b) => b,
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::ReturnTypesBlock(vec![])], vec![other] ),
-                    };
+                            let variadic_pos = arguments_t.iter().position(|t| matches!(t, RuntimeValueT::Variadic(_)));
+                            let fixed_args_count = if variadic_pos.is_some() { arguments_t.len() - 1 } else { arguments_t.len() };
+                            let fp = if variadic_pos.is_some() {
+                                frame.frame_pointer
+                            } else {
+                                self.data_stack.len() - fixed_args_count
+                            };
+                            let stack_items_count = self.data_stack.len() - fp;
 
-                    let args_type = match self.data_stack.pop().unwrap_or_else(||unreachable!("eval")){
-                        RuntimeValue::ArgumentsBlock(b) => b,
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::ArgumentsBlock(vec![])], vec![other] ),
-                    };
+                            if stack_items_count < fixed_args_count {
+                                ret_error!(UnsufficientValues { op: "Eval", exp: fixed_args_count, got: stack_items_count })
+                            }
 
-                    if self.data_stack.len() < args_type.len(){
-                        ret_error!(UnsufficientValues { op: "Eval", exp: args_type.len(), got: self.data_stack.len() })
-                    }
+                            let variadic_count = stack_items_count - fixed_args_count;
 
-                    let fp = self.data_stack.len() - args_type.len();
-                    for i in self.data_stack.len()-1..fp {
-                        if !self.data_stack[i].compare_type(args_type[i - fp].clone()){
-                            ret_error!(UnexpectedTypes,[args_type[i - fp].clone().to_runtimevalue()], vec![self.data_stack[fp].clone()])
+                            for i in fp..self.data_stack.len() {
+                                let k = i - fp;
+
+                                let expected_type = match variadic_pos {
+                                    Some(v_idx) => {
+                                        if k < v_idx {
+                                            arguments_t[k].clone()
+                                        } else if k >= v_idx && k < v_idx + variadic_count {
+                                            if let RuntimeValueT::Variadic(inner_box) = &arguments_t[v_idx] {
+                                                *inner_box.clone()
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        } else {
+                                            arguments_t[k - variadic_count + 1].clone()
+                                        }
+                                    }
+                                    None => arguments_t[k].clone() // Normal checking
+                                };
+
+                                if !self.data_stack[i].compare_type(expected_type.clone()) {
+                                    ret_error!(UnexpectedTypes, [expected_type.to_runtimevalue()], vec![self.data_stack[i].clone()])
+                                }
+                            }
+
+                            pending_call = Some(CallFrame {
+                                instructions: block,
+                                ip: 0,
+                                frame_pointer: fp
+                            });
                         }
-                    }
-
-                    pending_call = Some(CallFrame {
-                        instructions: block,
-                        ip: 0,
-                        frame_pointer: fp
-                    })
-
+                        other => ret_error!(UnexpectedTypes, [default_runtime_function()], vec![other] ),
+                    };
                 }
             }
             self.call_stack.push(frame);
@@ -712,12 +723,30 @@ fn collect_tokens_into_types(frame: &mut CallFrame) -> Result<Vec<RuntimeValueT>
                 break;
             }
             Token::UnquotedLit(t) => {
-                match t.as_str() {
-                    "string" => types_vec.push(RuntimeValueT::String),
-                    "int" => types_vec.push(RuntimeValueT::Int),
-                    "bool" => types_vec.push(RuntimeValueT::Bool),
-                    "block" => types_vec.push(RuntimeValueT::Block),
-                    _ => todo!("return unknown type error")
+                let word = t.trim();
+                if word.is_empty() { continue; }
+
+                let is_variadic = word.starts_with("..");
+
+                let base_word = if is_variadic {
+                    if word == ".." { "any" } else { &word[2..] }
+                } else {
+                    word
+                };
+
+                let base_type = match base_word {
+                    "string" => RuntimeValueT::String,
+                    "int" => RuntimeValueT::Int,
+                    "bool" => RuntimeValueT::Bool,
+                    "function" => RuntimeValueT::Function,
+                    "any" => RuntimeValueT::Any,
+                    _ => todo!("return unknown type error for: {}", base_word)
+                };
+
+                if is_variadic {
+                    types_vec.push(RuntimeValueT::Variadic(Box::new(base_type)));
+                } else {
+                    types_vec.push(base_type);
                 }
             }
             _ => todo!("return unknown type error")

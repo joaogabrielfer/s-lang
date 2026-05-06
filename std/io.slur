@@ -1,3 +1,4 @@
+;;
 fun splitall {
 	into var sep
 	call __splitall
@@ -12,8 +13,9 @@ fun __splitall{
 		call __splitall
 	}
 }
+;;
 
-fun printf {
+(any string) {
 	push "%"
 	splitb
 	if {
@@ -26,15 +28,13 @@ fun printf {
 		pop
 		pop
 	}
-}
+} into printf
 
-;;
-fun print {
+(any) {
 	pop
 	push "\n"
 	pop
-}
-;;
+} into print
 
 (string int) {
 	dup
@@ -50,8 +50,9 @@ fun print {
 		push "\n" pop
 		drop
 	}
-} into var repeat
+} into repeat
 
+;;
 fun readfile {
 	into var path
 	push 0
@@ -71,4 +72,4 @@ fun __readfile {
 	swap
 	call __readfile
 }
-
+;;
