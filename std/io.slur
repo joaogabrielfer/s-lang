@@ -28,11 +28,29 @@ fun printf {
 	}
 }
 
+;;
 fun print {
 	pop
 	push "\n"
 	pop
 }
+;;
+
+(string int) {
+	dup
+	push 0
+	eq
+	not
+	if {
+		over pop
+		push 1
+		swap sub
+		call repeat
+	} else {
+		push "\n" pop
+		drop
+	}
+} into var repeat
 
 fun readfile {
 	into var path

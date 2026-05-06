@@ -379,19 +379,37 @@ impl PVM {
                         ret_error!(UndeclaredObject { t: "function", name: fun_name })
                     }
 
-                    // match &self.elements[&fun_name]{
-                    //     RuntimeValue::Block(tokens) => {
-                    //         pending_call = Some(CallFrame {
-                    //             instructions: tokens.clone(),
-                    //             ip: 0,
-                    //             frame_pointer: 0
-                    //         })
-                    //     }
-                    //     _ => {
-                    //         let e = self.elements[&fun_name].clone();
-                    //         self.data_stack.push(e);
-                    //     }
-                    // };
+
+                    let (args_type, _return_types, block) = match &self.elements[fun_name.as_str()]{
+                        value::Element::Function { args_types, block, return_types } => {
+                                (args_types.clone(), return_types.clone(), block.clone())
+                        }
+                        value::Element::Var(runtime_value) => {
+                            ret_error!(UnexpectedTypes, [
+                                RuntimeValue::Block(vec![]),
+                                RuntimeValue::ReturnTypesBlock(vec![]),
+                                RuntimeValue::ArgumentsBlock(vec![])
+                            ], vec![runtime_value.clone()]);
+                        }
+                    };
+
+                    if self.data_stack.len() < args_type.len(){
+                        ret_error!(UnsufficientValues { op: "Call", exp: args_type.len(), got: self.data_stack.len() })
+                    }
+
+                    let fp = self.data_stack.len() - args_type.len();
+                    for i in self.data_stack.len()-1..fp {
+                        if !self.data_stack[i].compare_type(args_type[i - fp].clone()){
+                            ret_error!(UnexpectedTypes,[args_type[i - fp].clone().to_runtimevalue()], vec![self.data_stack[fp].clone()])
+                        }
+                    }
+
+                    pending_call = Some(CallFrame {
+                        instructions: block,
+                        ip: 0,
+                        frame_pointer: fp
+                    })
+
                 }
                 Token::Len => self.data_stack.push(RuntimeValue::Int(self.data_stack.len().try_into().unwrap())),
                 Token::SplitB => {
