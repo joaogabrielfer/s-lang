@@ -15,7 +15,8 @@ fun __splitall{
 }
 ;;
 
-(any string) {
+;; USAGE: push 10 20 30 "% % %" #printf -> 30 20 10;;
+(..any) {
 	push "%"
 	splitb
 	if {

@@ -1,0 +1,4 @@
+include io
+
+push 10 20 30 "% % %"
+call printf

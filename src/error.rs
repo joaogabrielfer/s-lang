@@ -89,7 +89,8 @@ pub enum LangError{
     UndeclaredObject{
         t: String,
         name: String,
-    }
+    },
+    UnknownType(String),
 }
 
 
@@ -127,6 +128,7 @@ impl std::fmt::Display for LangError{
             Self::LineOutOfRange => write!(f, "Line out of range"),
             // Self::ParseError(s) => write!(f, "Could not parse '{s}'"),
             Self::StackIndexOutOfRange { op, index, stack_len } => write!(f, "Cannot {op}: index {index} out of range for stack of length {stack_len}"),
+            Self::UnknownType(t) => write!(f, "Unknown type '{}'", t),
         }
     }
 }

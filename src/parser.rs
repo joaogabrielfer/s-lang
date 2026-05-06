@@ -152,10 +152,6 @@ impl PVM {
                 Token::NumberLit(num) => ret_error!(InvalidToken, Token::NumberLit(num)),
                 Token::QuotedLit(s) => ret_error!(InvalidToken, Token::QuotedLit(s.to_string())),
                 Token::UnquotedLit(s) => ret_error!(InvalidToken, Token::UnquotedLit(s.to_string())),
-                Token::Var => {
-                    let next_token = frame.next();
-                    self.parse_var(next_token)?;
-                }
                 Token::Into => {
                     let var_name_opt = frame.next();
                     let var_name: String = match var_name_opt {
@@ -379,17 +375,7 @@ impl PVM {
                     match self.elements[element_name.as_str()].clone() {
                         Element::Var(v) => self.data_stack.push(v),
                         Element::Function { arguments_t: args_types, block, ..} => {
-                            if self.data_stack.len() < args_types.len() {
-                                ret_error!(UnsufficientValues { op: "Call", exp: args_types.len(), got: self.data_stack.len() })
-                            }
-                            let fp = self.data_stack.len() - args_types.len();
-                            for i in fp..self.data_stack.len() {
-                                let arg_index = i - fp;
-
-                                if !self.data_stack[i].compare_type(args_types[arg_index].clone()) {
-                                    ret_error!(UnexpectedTypes, [args_types[arg_index].clone().to_runtimevalue()], vec![self.data_stack[i].clone()])
-                                }
-                            }
+                            let fp = self.resolve_call_frame(&args_types)?;
 
                             pending_call = Some(CallFrame {
                                 instructions: block,
@@ -586,45 +572,7 @@ impl PVM {
                     match self.data_stack.pop().unwrap_or_else(||unreachable!("eval")){
                         RuntimeValue::Function { arguments_t, block, .. } => {
 
-                            let variadic_pos = arguments_t.iter().position(|t| matches!(t, RuntimeValueT::Variadic(_)));
-                            let fixed_args_count = if variadic_pos.is_some() { arguments_t.len() - 1 } else { arguments_t.len() };
-                            let fp = if variadic_pos.is_some() {
-                                frame.frame_pointer
-                            } else {
-                                self.data_stack.len() - fixed_args_count
-                            };
-                            let stack_items_count = self.data_stack.len() - fp;
-
-                            if stack_items_count < fixed_args_count {
-                                ret_error!(UnsufficientValues { op: "Eval", exp: fixed_args_count, got: stack_items_count })
-                            }
-
-                            let variadic_count = stack_items_count - fixed_args_count;
-
-                            for i in fp..self.data_stack.len() {
-                                let k = i - fp;
-
-                                let expected_type = match variadic_pos {
-                                    Some(v_idx) => {
-                                        if k < v_idx {
-                                            arguments_t[k].clone()
-                                        } else if k >= v_idx && k < v_idx + variadic_count {
-                                            if let RuntimeValueT::Variadic(inner_box) = &arguments_t[v_idx] {
-                                                *inner_box.clone()
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        } else {
-                                            arguments_t[k - variadic_count + 1].clone()
-                                        }
-                                    }
-                                    None => arguments_t[k].clone() // Normal checking
-                                };
-
-                                if !self.data_stack[i].compare_type(expected_type.clone()) {
-                                    ret_error!(UnexpectedTypes, [expected_type.to_runtimevalue()], vec![self.data_stack[i].clone()])
-                                }
-                            }
+                            let fp = self.resolve_call_frame(&arguments_t)?;
 
                             pending_call = Some(CallFrame {
                                 instructions: block,
@@ -646,20 +594,70 @@ impl PVM {
         Ok(Flow::Next)
     }
 
-    fn parse_var(&mut self, v: Option<&Token>) -> Result<(), Box<dyn Error>>{
-        match v{
-            Some(tk) => match tk{
-                Token::UnquotedLit(s) => {
-                    if self.elements.contains_key(s){
-                        ret_error!(RedeclarationObject { t: "variable", name: s })
-                    }
-                    self.elements.insert(s.clone(), value::Element::Var(RuntimeValue::Int(0)))
-                }
-                _ => ret_error!(UnexpectedToken, [UnquotedLit], Some(tk))
+    fn resolve_call_frame(&self, arguments_t: &[RuntimeValueT]) -> Result<usize, Box<dyn Error>> {
+        let variadic_pos = arguments_t.iter().position(|t| matches!(t, RuntimeValueT::Variadic(_)));
+        let fp;
+
+        if let Some(v_idx) = variadic_pos {
+            let fixed_after = arguments_t.len() - 1 - v_idx;
+            let fixed_before = v_idx;
+
+            if self.data_stack.len() < fixed_before + fixed_after {
+                ret_error!(UnsufficientValues { op: "Call", exp: fixed_before + fixed_after, got: self.data_stack.len() })
             }
-            None => ret_error!(UnexpectedToken, [UnquotedLit], None::<Token>)
-        };
-        Ok(())
+
+            let end_v = self.data_stack.len() - fixed_after;
+            let mut start_v = end_v;
+
+            let inner_type = if let RuntimeValueT::Variadic(t) = &arguments_t[v_idx] {
+                *t.clone()
+            } else {
+                unreachable!()
+            };
+
+            while start_v > fixed_before {
+                if self.data_stack[start_v - 1].compare_type(inner_type.clone()) {
+                    start_v -= 1;
+                } else {
+                    break;
+                }
+            }
+
+            fp = start_v - fixed_before;
+        } else {
+            if self.data_stack.len() < arguments_t.len() {
+                ret_error!(UnsufficientValues { op: "Call", exp: arguments_t.len(), got: self.data_stack.len() })
+            }
+            fp = self.data_stack.len() - arguments_t.len();
+        }
+
+        // Now verify types
+        for i in fp..self.data_stack.len() {
+            let k = i - fp;
+            let expected_type = match variadic_pos {
+                Some(v_idx) => {
+                    let variadic_count = self.data_stack.len() - fp - (arguments_t.len() - 1);
+                    if k < v_idx {
+                        arguments_t[k].clone()
+                    } else if k >= v_idx && k < v_idx + variadic_count {
+                        if let RuntimeValueT::Variadic(inner_box) = &arguments_t[v_idx] {
+                            *inner_box.clone()
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        arguments_t[k - variadic_count + 1].clone()
+                    }
+                }
+                None => arguments_t[k].clone()
+            };
+
+            if !self.data_stack[i].compare_type(expected_type.clone()) {
+                ret_error!(UnexpectedTypes, [expected_type.to_runtimevalue()], vec![self.data_stack[i].clone()])
+            }
+        }
+
+        Ok(fp)
     }
 
 }
@@ -740,7 +738,7 @@ fn collect_tokens_into_types(frame: &mut CallFrame) -> Result<Vec<RuntimeValueT>
                     "bool" => RuntimeValueT::Bool,
                     "function" => RuntimeValueT::Function,
                     "any" => RuntimeValueT::Any,
-                    _ => todo!("return unknown type error for: {}", base_word)
+                    _ => ret_error!(UnknownType, base_word.to_string())
                 };
 
                 if is_variadic {
@@ -749,7 +747,7 @@ fn collect_tokens_into_types(frame: &mut CallFrame) -> Result<Vec<RuntimeValueT>
                     types_vec.push(base_type);
                 }
             }
-            _ => todo!("return unknown type error")
+            other => ret_error!(UnexpectedToken, [UnquotedLit], Some(other))
         }
     };
     Ok(types_vec)
