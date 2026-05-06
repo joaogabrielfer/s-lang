@@ -4,7 +4,7 @@ use crate::lexer::Token;
 pub struct PVM{
     pub data_stack: Vec<RuntimeValue>,
     pub call_stack: Vec<CallFrame>,
-    pub elements: HashMap<String, RuntimeValue>
+    pub elements: HashMap<String, Element>
 }
 
 impl PVM {
@@ -14,7 +14,16 @@ impl PVM {
             call_stack: vec![],
             elements: HashMap::new()
         }
+    }
 }
+
+pub enum Element{
+    Var(RuntimeValue),
+    Function {
+        args_types: Vec<RuntimeValueT>,
+        return_types: Vec<RuntimeValueT>,
+        block: Vec<Token>,
+    }
 }
 
 pub struct CallFrame {
@@ -26,10 +35,6 @@ impl CallFrame {
     pub fn peek(&self) -> Option<&Token> {
         self.instructions.get(self.ip)
     }
-
-    // pub fn peek_ahead(&self, steps: usize) -> Option<&Token> {
-    //     self.instructions.get(self.ip + steps - 1)
-    // }
 
     pub fn next(&mut self) -> Option<&Token> {
         let result = self.instructions.get(self.ip);
@@ -44,15 +49,48 @@ pub enum RuntimeValue {
     Bool(bool),
     String(Rc<String>),
     Block(Vec<Token>),
+    ArgumentsBlock(Vec<RuntimeValueT>),
+    ReturnTypesBlock(Vec<RuntimeValueT>),
+}
+
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum RuntimeValueT {
+    Int,
+    Bool,
+    String,
+    Block,
+}
+
+impl RuntimeValueT {
+    pub fn to_runtimevalue(&self) -> RuntimeValue {
+        match self {
+            RuntimeValueT::Int    => RuntimeValue::Int(0),
+            RuntimeValueT::Bool   => RuntimeValue::Bool(false),
+            RuntimeValueT::String => RuntimeValue::String(Rc::new("".to_string())),
+            RuntimeValueT::Block  => RuntimeValue::Block(vec![]),
+        }
+    }
 }
 
 impl RuntimeValue {
     pub fn type_name(&self) -> &'static str {
         match self {
-            RuntimeValue::Int(_) => "int",
-            RuntimeValue::Bool(_) => "bool",
-            RuntimeValue::String(_) => "str",
-            RuntimeValue::Block(_) => "block",
+            RuntimeValue::Int(_)              => "int",
+            RuntimeValue::Bool(_)             => "bool",
+            RuntimeValue::String(_)           => "str",
+            RuntimeValue::Block(_)            => "block",
+            RuntimeValue::ArgumentsBlock(_)   => "arument block",
+            RuntimeValue::ReturnTypesBlock(_) => "return type block",
+        }
+    }
+    pub fn compare_type(&self, t: RuntimeValueT) -> bool {
+        match self {
+            RuntimeValue::Int(_)    => t == RuntimeValueT::Int,
+            RuntimeValue::Bool(_)   => t == RuntimeValueT::Bool,
+            RuntimeValue::String(_) => t == RuntimeValueT::String,
+            RuntimeValue::Block(_)  => t == RuntimeValueT::Block,
+            _ => false,
         }
     }
 }
@@ -74,6 +112,8 @@ impl std::fmt::Display for RuntimeValue {
             RuntimeValue::String(s) => write!(f, "{s}"),
             RuntimeValue::Bool(b) => write!(f, "{b}"),
             RuntimeValue::Block(b) => write!(f, "{:?}", b),
+            RuntimeValue::ArgumentsBlock(ab) => write!(f, "{:?}", ab),
+            RuntimeValue::ReturnTypesBlock(rb) => write!(f, "{:?}", rb),
         }
     }
 }

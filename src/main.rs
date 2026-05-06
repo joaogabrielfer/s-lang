@@ -20,10 +20,14 @@ fn main() -> Result<(), Box<dyn Error>>{
             io::stdout().flush()?;
             io::stdin().read_line(&mut input)?;
 
-            let tokens= tokenize(input.clone());
+            pvm.call_stack.push(CallFrame {
+                instructions: tokenize(input.clone()),
+                ip: 0,
+                frame_pointer: 0
+            });
             if cfg!(feature = "token-logging"){
                     #[cfg(feature = "token-logging")]
-                    log_tokens(tokens.clone());
+                    log_tokens(pvm.call_stack.last().unwrap().instructions.clone());
                     exit(0);
             }
 
@@ -34,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>>{
                     print_stack(&pvm.data_stack);
                 }
                 _ => {
-                    if tokens[tokens.len() - 1] == Token::Pop{
+                    if let Some(f) = pvm.call_stack.last() && let Some(tk) = f.instructions.last() && *tk == Token::Pop{
                         println!()
                     }
                     print_stack(&pvm.data_stack);

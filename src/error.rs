@@ -54,7 +54,7 @@ pub(crate) use ret_error;
 
 #[derive(Debug, Clone)]
 pub enum LangError{
-    StackEmpty,
+    StackUnderflow,
     InvalidToken(Token),
     InvalidPath(String),
     FileNotFound{
@@ -76,7 +76,7 @@ pub enum LangError{
     },
     IndexOutOfRange(i64),
     LineOutOfRange,
-    ParseError(String),
+    // ParseError(String),
     StackIndexOutOfRange {
         op: String,
         index: usize,
@@ -100,7 +100,7 @@ impl std::fmt::Display for LangError{
             Self::InvalidToken(tk) => write!(f, "Invalid token '{:?}'", tk),
             Self::InvalidPath(p) => write!(f, "Invalid path '{p}'"),
             Self::FileNotFound{file, reason} => write!(f, "Could not open file {file}: {reason}"),
-            Self::StackEmpty => write!(f, "Could not pop variable: stack empty"),
+            Self::StackUnderflow => write!(f, "Stack Underflow"),
             Self::UnsufficientValues{op, exp, got} => write!(f, "Cannot {op}: Expected {exp} value in the stack, got {got}"),
             Self::UnexpectedToken{exp, got} => {
                 let type_names: Vec<&str> = exp
@@ -125,7 +125,7 @@ impl std::fmt::Display for LangError{
             }
             Self::IndexOutOfRange(i) => write!(f, "Index out of range: {i}"),
             Self::LineOutOfRange => write!(f, "Line out of range"),
-            Self::ParseError(s) => write!(f, "Could not parse '{s}'"),
+            // Self::ParseError(s) => write!(f, "Could not parse '{s}'"),
             Self::StackIndexOutOfRange { op, index, stack_len } => write!(f, "Cannot {op}: index {index} out of range for stack of length {stack_len}"),
         }
     }

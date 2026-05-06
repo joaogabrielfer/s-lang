@@ -1,6 +1,7 @@
 fun factorial {
 	 dup
-	 gt 0 if {
+	 push 0
+	 gt if {
 		dup
 		push 1
 		swap
@@ -11,4 +12,32 @@ fun factorial {
 		drop
 		push 1
 	 }
+}
+
+fun fib {
+	into var limit
+	push 1 into var idx
+	push 1 0
+	call __fib
+	push limit drop
+	drop
+}
+
+fun __fib{
+	over
+	add
+	swap
+	push idx
+	push 1
+	add
+	dup
+	push limit
+	dup
+	into var limit
+	lt if {
+		into var idx
+		call __fib
+	} else {
+		drop
+	}
 }

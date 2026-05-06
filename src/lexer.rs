@@ -1,18 +1,18 @@
-use std::process::exit;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token{
     Push, Pop, Drop, ReadLine, ReadLineB, Clear,
     Add, Sub, Mul, Div, Neg, Dup,
-    Len, Split, SplitB,
+    Len, SplitB,
     Var, Into,
-    Int, IntB,
+    AsIntB,
     Swap, Rot, Over, Roll, Pick,
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
+    OpenParen, CloseParen,
     If, Else,
     And, Or, Not,
-    FunDeclaration(String), FunCall(String),
+    FunDeclaration(String), FunCall(String), Eval,
     BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i64),
     Quit, Ret,
     Include,
@@ -34,12 +34,10 @@ impl Token {
             Token::Neg => "Neg",
             Token::Dup => "Dup",
             Token::Len => "Len",
-            Token::Split => "Split",
             Token::SplitB => "SplitB",
             Token::Var => "Var",
             Token::Into => "Into",
-            Token::Int => "Int",
-            Token::IntB => "IntB",
+            Token::AsIntB => "AsIntB",
             Token::Swap => "Swap",
             Token::Rot => "Rot",
             Token::Over => "Over",
@@ -50,6 +48,8 @@ impl Token {
             Token::Lt => "Lt",
             Token::OpenCurly => "OpenCurly",
             Token::CloseCurly => "CloseCurly",
+            Token::OpenParen => "OpenParen",
+            Token::CloseParen => "CloseParen",
             Token::If => "If",
             Token::Else => "Else",
             Token::And => "And",
@@ -57,6 +57,7 @@ impl Token {
             Token::Not => "Not",
             Token::FunDeclaration(_) => "FunDeclaration",
             Token::FunCall(_) => "FunCall",
+            Token::Eval => "Eval",
             Token::BoolLit(_) => "BoolLit",
             Token::QuotedLit(_) => "QuotedLit",
             Token::UnquotedLit(_) => "UnquotedLit",
@@ -83,6 +84,14 @@ pub fn tokenize(content: String) -> Vec<Token> {
             }
             '}' => {
                 tokens.push(Token::CloseCurly);
+                chars.next();
+            }
+            '(' => {
+                tokens.push(Token::OpenParen);
+                chars.next();
+            }
+            ')' => {
+                tokens.push(Token::CloseParen);
                 chars.next();
             }
             ';' => {
@@ -117,7 +126,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                 let mut word = String::new();
 
                 while let Some(&nc) = chars.peek() {
-                    if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' {
+                    if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' {
                         break;
                     }
                     word.push(nc);
@@ -139,15 +148,13 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "dup"       => Token::Dup,
                     "var"       => Token::Var,
                     "into"      => Token::Into,
-                    "int"       => Token::Int,
-                    "intb"      => Token::IntB,
+                    "asintb"    => Token::AsIntB,
                     "swap"      => Token::Swap,
                     "len"       => Token::Len,
                     "rot"       => Token::Rot,
                     "over"      => Token::Over,
                     "roll"      => Token::Roll,
                     "pick"      => Token::Pick,
-                    "split"     => Token::Split,
                     "splitb"    => Token::SplitB,
                     "eq"        => Token::Eq,
                     "lt"        => Token::Lt,
@@ -160,6 +167,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "true"      => Token::BoolLit(true),
                     "false"     => Token::BoolLit(false),
                     "quit"      => Token::Quit,
+                    "eval"      => Token::Eval,
                     "ret"       => Token::Ret,
                     "include"   => Token::Include,
                     "fun" => {
@@ -174,10 +182,6 @@ pub fn tokenize(content: String) -> Vec<Token> {
                             chars.next();
                         }
 
-                        if fun_name.is_empty() {
-                            eprintln!("ERROR: Missing function name in declaration");
-                            exit(1);
-                        }
                         Token::FunDeclaration(fun_name)
                     }
 
@@ -193,10 +197,6 @@ pub fn tokenize(content: String) -> Vec<Token> {
                             chars.next();
                         }
 
-                        if fun_name.is_empty() {
-                            eprintln!("ERROR: Missing function name in call");
-                            exit(1);
-                        }
                         Token::FunCall(fun_name)
                     }
 
