@@ -1,3 +1,5 @@
+use crate::value::{RuntimeValueT, get_type_from_str};
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token{
@@ -10,9 +12,11 @@ pub enum Token{
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
     OpenParen, CloseParen,
+    OpenSquare, CloseSquare,
     If, Else,
     And, Or, Not,
     ElementCall(String), Eval,
+    TypeLit(RuntimeValueT), TypeOf,
     BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i64),
     Quit, Ret,
     Include,
@@ -63,6 +67,10 @@ impl Token {
             Token::Quit           => "Quit",
             Token::Ret            => "Ret",
             Token::Include        => "Include",
+            Token::OpenSquare     => "OpenSquare",
+            Token::CloseSquare    => "CloseSquare",
+            Token::TypeLit(_)     => "TypeLit",
+            Token::TypeOf         => "TypeOf",
         }
     }
 }
@@ -90,6 +98,14 @@ pub fn tokenize(content: String) -> Vec<Token> {
             }
             ')' => {
                 tokens.push(Token::CloseParen);
+                chars.next();
+            }
+            '[' => {
+                tokens.push(Token::OpenSquare);
+                chars.next();
+            }
+            ']' => {
+                tokens.push(Token::CloseSquare);
                 chars.next();
             }
             ';' => {
@@ -131,6 +147,43 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     chars.next();
                 }
                 tokens.push(Token::ElementCall(elm));
+            }
+            '@' => {
+                chars.next();
+                if chars.peek().is_some_and(|c| c.is_whitespace()){
+                    tokens.push(Token::TypeOf);
+                    chars.next();
+                } else {
+                    let mut t = String::new();
+                    while let Some(&nc) = chars.peek() {
+                        if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' || nc == '[' || nc == ']'{
+                            break;
+                        }
+                        t.push(nc);
+                        chars.next();
+                    }
+                    let rt_t = get_type_from_str(t.as_str());
+                    tokens.push(Token::TypeLit(rt_t));
+                }
+            }
+            '.' => {
+                chars.next();
+                if chars.peek().is_some_and(|c| *c == '.'){
+                    chars.next();
+                    if chars.peek().is_some_and(|c| *c == '@'){
+                        chars.next();
+                        let mut t = String::new();
+                        while let Some(&nc) = chars.peek() {
+                            if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' || nc == '[' || nc == ']'{
+                                break;
+                            }
+                            t.push(nc);
+                            chars.next();
+                        }
+                        let rt_t = get_type_from_str(t.as_str());
+                        tokens.push(Token::TypeLit(RuntimeValueT::Variadic(Box::new(rt_t))));
+                    }
+                }
             }
             _ => {
                 let mut word = String::new();

@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::error::{LangError, ret_error};
 use crate::lexer::{Token, tokenize};
-use crate::value::{self, CallFrame, Element, PVM, RuntimeValue, RuntimeValueT, default_runtime_function};
+use crate::value::*;
 
 pub const STD_LIB_PATH: &str = "/home/joaogabriel/personal/programming/misc/slur/std";
 
@@ -38,13 +38,18 @@ impl PVM {
                     loop {
                         if !is_first {
                             match frame.peek() {
-                                Some(&Token::NumberLit(_)) | Some(&Token::QuotedLit(_)) | Some(&Token::UnquotedLit(_)) => { }
+                                Some(&Token::NumberLit(_))
+                                    | Some(&Token::QuotedLit(_))
+                                    | Some(&Token::TypeLit(_))
+                                    | Some(&Token::CloseSquare)
+                                    | Some(&Token::OpenSquare)=> { }
                                 _ => break
                             }
                         }
 
                         match frame.next() {
                             Some(Token::NumberLit(n)) => self.data_stack.push(RuntimeValue::Int(*n)),
+                            Some(Token::TypeLit(t)) => self.data_stack.push(RuntimeValue::Type(t.clone())),
                             Some(Token::QuotedLit(s)) => {
                                 let trimmed = s.trim_matches('\"').to_string();
                                 self.data_stack.push(RuntimeValue::String(Rc::new(trimmed)));
@@ -52,8 +57,8 @@ impl PVM {
                             Some(Token::UnquotedLit(s)) => {
                                 if self.elements.contains_key(s) {
                                     match self.elements[s].clone(){
-                                        value::Element::Var(runtime_value) => self.data_stack.push(runtime_value),
-                                        value::Element::Function { arguments_t: args_types, block, return_t: return_types } => {
+                                        Element::Var(runtime_value) => self.data_stack.push(runtime_value),
+                                        Element::Function { arguments_t: args_types, block, return_t: return_types } => {
                                             self.data_stack.push(RuntimeValue::Function {
                                                 arguments_t: args_types,
                                                 return_t: return_types,
@@ -64,6 +69,22 @@ impl PVM {
                                 } else {
                                     ret_error!(UndeclaredObject { t: "variable", name: s })
                                 }
+                            }
+                            Some(Token::OpenSquare) => {
+                                let mut list: Vec<RuntimeValue> = vec![];
+                                while frame.peek() != Some(&Token::CloseSquare){
+                                    match frame.next() {
+                                        Some(Token::NumberLit(n)) => list.push(RuntimeValue::Int(*n)),
+                                        Some(Token::TypeLit(t)) => list.push(RuntimeValue::Type(t.clone())),
+                                        Some(Token::QuotedLit(s)) => {
+                                            let trimmed = s.trim_matches('\"').to_string();
+                                            list.push(RuntimeValue::String(Rc::new(trimmed)));
+                                        }
+                                        other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit, NumberLit], other)
+                                    }
+                                }
+                                frame.next();
+                                self.data_stack.push(RuntimeValue::List(list));
                             }
                             other => {
                                 ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit, NumberLit], other)
@@ -151,7 +172,27 @@ impl PVM {
                 }
                 Token::NumberLit(num) => ret_error!(InvalidToken, Token::NumberLit(num)),
                 Token::QuotedLit(s) => ret_error!(InvalidToken, Token::QuotedLit(s.to_string())),
-                Token::UnquotedLit(s) => ret_error!(InvalidToken, Token::UnquotedLit(s.to_string())),
+                Token::UnquotedLit(s) => {
+                    if !self.elements.contains_key(&s){
+                        ret_error!(UndeclaredObject { t: "element", name: s })
+                    }
+
+                    match self.elements[&s].clone(){
+                        Element::Var(v) => {
+                            self.data_stack.push(v);
+                        }
+                        Element::Function { arguments_t: args_types, block, ..} => {
+                            let fp = self.resolve_call_frame(&args_types)?;
+
+                            pending_call = Some(CallFrame {
+                                instructions: block,
+                                ip: 0,
+                                frame_pointer: fp
+                            })
+                        }
+                    }
+
+                }
                 Token::Into => {
                     let var_name_opt = frame.next();
                     let var_name: String = match var_name_opt {
@@ -591,6 +632,17 @@ impl PVM {
                         other => ret_error!(UnexpectedTypes, [default_runtime_function()], vec![other] ),
                     };
                 }
+                Token::OpenSquare => ret_error!(InvalidToken, Token::OpenSquare),
+                Token::CloseSquare => ret_error!(InvalidToken, Token::CloseSquare),
+                Token::TypeLit(t) => ret_error!(InvalidToken, Token::TypeLit(t)),
+                Token::TypeOf => {
+                    if self.data_stack.len() - frame.frame_pointer < 1 {
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let t = self.data_stack.pop().unwrap_or_else(|| unreachable!("typeof"));
+                    self.data_stack.push(RuntimeValue::Type(t.get_type()));
+                }
             }
             self.call_stack.push(frame);
 
@@ -727,34 +779,30 @@ fn collect_tokens_into_types(frame: &mut CallFrame) -> Result<Vec<RuntimeValueT>
             Token::CloseParen => {
                 break;
             }
-            Token::UnquotedLit(t) => {
-                let word = t.trim();
-                if word.is_empty() { continue; }
-
-                let is_variadic = word.starts_with("..");
-
-                let base_word = if is_variadic {
-                    if word == ".." { "any" } else { &word[2..] }
-                } else {
-                    word
-                };
-
-                let base_type = match base_word {
-                    "string"   => RuntimeValueT::String,
-                    "int"      => RuntimeValueT::Int,
-                    "bool"     => RuntimeValueT::Bool,
-                    "function" => RuntimeValueT::Function,
-                    "any"      => RuntimeValueT::Any,
-                    _ => ret_error!(UnknownType, base_word.to_string())
-                };
-
-                if is_variadic {
-                    types_vec.push(RuntimeValueT::Variadic(Box::new(base_type)));
-                } else {
-                    types_vec.push(base_type);
+            Token::OpenSquare => {
+                let mut list: Vec<RuntimeValueT> = vec![];
+                while frame.ip < frame.instructions.len(){
+                    let tk = frame.instructions[frame.ip].clone();
+                    frame.ip += 1;
+                    match tk {
+                        Token::TypeLit(t) => {
+                            list.push(t);
+                        }
+                        Token::CloseParen => {
+                            break;
+                        }
+                        Token::CloseSquare => {
+                            break;
+                        }
+                        other => ret_error!(UnknownType, format!("{:?}", other))
+                    }
                 }
+                types_vec.push(RuntimeValueT::List(list));
             }
-            other => ret_error!(UnexpectedToken, [UnquotedLit], Some(other))
+            Token::TypeLit(t) => {
+                types_vec.push(t);
+            }
+            other => ret_error!(UnknownType, format!("{:?}", other))
         }
     };
     Ok(types_vec)
