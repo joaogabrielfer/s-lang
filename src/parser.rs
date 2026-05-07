@@ -51,7 +51,7 @@ impl PVM {
                             }
                             Some(Token::UnquotedLit(s)) => {
                                 if self.elements.contains_key(s) {
-                                    match self.elements.remove(s).unwrap_or_else(|| unreachable!("push <var>")){
+                                    match self.elements[s].clone(){
                                         value::Element::Var(runtime_value) => self.data_stack.push(runtime_value),
                                         value::Element::Function { arguments_t: args_types, block, return_t: return_types } => {
                                             self.data_stack.push(RuntimeValue::Function {
@@ -208,7 +208,15 @@ impl PVM {
                     self.data_stack.push(n1);
                     self.data_stack.push(n2);
                 }
-                Token::Rot => self.data_stack.reverse(),
+                Token::Rot => {
+                    if self.data_stack.len() - frame.frame_pointer < 3 {
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let a = self.data_stack.remove(self.data_stack.len() - 3);
+
+                    self.data_stack.push(a);
+                }
                 Token::Over => {
                     if self.data_stack.len() - frame.frame_pointer < 2{
                         ret_error!(StackUnderflow)
@@ -631,7 +639,6 @@ impl PVM {
             fp = self.data_stack.len() - arguments_t.len();
         }
 
-        // Now verify types
         for i in fp..self.data_stack.len() {
             let k = i - fp;
             let expected_type = match variadic_pos {
@@ -733,11 +740,11 @@ fn collect_tokens_into_types(frame: &mut CallFrame) -> Result<Vec<RuntimeValueT>
                 };
 
                 let base_type = match base_word {
-                    "string" => RuntimeValueT::String,
-                    "int" => RuntimeValueT::Int,
-                    "bool" => RuntimeValueT::Bool,
+                    "string"   => RuntimeValueT::String,
+                    "int"      => RuntimeValueT::Int,
+                    "bool"     => RuntimeValueT::Bool,
                     "function" => RuntimeValueT::Function,
-                    "any" => RuntimeValueT::Any,
+                    "any"      => RuntimeValueT::Any,
                     _ => ret_error!(UnknownType, base_word.to_string())
                 };
 

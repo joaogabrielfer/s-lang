@@ -1,3 +1,24 @@
-fun map {
-
-}
+(..any int function) {
+	push 0 swap
+	(..any int int function function) {
+		push 4 pick
+		push 4 pick
+		gt if {
+			push 4 pick
+			push 4 add
+			roll
+			over
+			eval
+			push 5 roll
+			push 5 roll
+			push 1 add
+			push 5 roll
+			push 5 roll
+			over
+			eval
+		} else {
+			drop drop drop drop
+		}
+	}
+	swap over eval
+} into map

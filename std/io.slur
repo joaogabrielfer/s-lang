@@ -1,21 +1,23 @@
-;;
-fun splitall {
-	into var sep
-	call __splitall
+(string string) {
+    into sep
+
+    (string) {
+        push sep dup into sep
+		splitb
+        if {
+			swap
+            rot dup
+			rot swap
+			eval
+        } else {
+            swap drop
+        }
+    }
+
+    swap over eval
 	push sep drop
-}
+} into splitall
 
-fun __splitall{
-	dup sep
-	splitb
-	if {
-		swap
-		call __splitall
-	}
-}
-;;
-
-;; USAGE: push 10 20 30 "% % %" #printf -> 30 20 10;;
 (..any) {
 	push "%"
 	splitb

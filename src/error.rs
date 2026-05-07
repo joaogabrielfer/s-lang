@@ -82,10 +82,10 @@ pub enum LangError{
         index: usize,
         stack_len: usize,
     },
-    RedeclarationObject{
-        t: String,
-        name: String,
-    },
+    // RedeclarationObject{
+    //     t: String,
+    //     name: String,
+    // },
     UndeclaredObject{
         t: String,
         name: String,
@@ -111,7 +111,7 @@ impl std::fmt::Display for LangError{
 
                 write!(f, "Expected token '{:?}' got '{:?}'", type_names, got)
             },
-            Self::RedeclarationObject{t, name} => write!(f, "Trying to redeclare {t} {name}"),
+            // Self::RedeclarationObject{t, name} => write!(f, "Trying to redeclare {t} {name}"),
             Self::UndeclaredObject{t, name} => write!(f, "Undeclared {t} {name}"),
             Self::UnexpectedTypes { exp, got } => {
                 let exp_type_names: Vec<&str> = exp
