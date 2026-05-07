@@ -8,7 +8,7 @@ use crate::error::{LangError, ret_error};
 use crate::lexer::{Token, tokenize};
 use crate::value::*;
 
-pub const STD_LIB_PATH: &str = "/home/joaogabriel/personal/programming/misc/slur/std";
+pub static STD_LIB_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/std");
 
 pub enum Flow{
     Next,
