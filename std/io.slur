@@ -1,7 +1,7 @@
-(string string) {
+(@string @string) {
     into sep
 
-    (string) {
+    (@string) {
         push sep dup into sep
 		splitb
         if {
@@ -18,7 +18,7 @@
 	push sep drop
 } into splitall
 
-(..any) {
+(..@any) {
 	push "%"
 	splitb
 	if {
@@ -33,13 +33,13 @@
 	}
 } into printf
 
-(any) {
+(@any) {
 	pop
 	push "\n"
 	pop
 } into print
 
-(string int) {
+(@string @int) {
 	dup
 	push 0
 	eq

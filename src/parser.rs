@@ -209,34 +209,6 @@ impl PVM {
                                 _ => self.elements.insert(var_name, Element::Var(var)),
                             };
                         }
-                        // 2.. => {
-                        //     println!("as fn");
-                        //     let block = self.data_stack.pop().unwrap_or_else(|| unreachable!("into"));
-                        //
-                        //     let args = if self.data_stack.len() - frame.frame_pointer >= 1 {
-                        //         match self.data_stack.pop().unwrap_or_else(|| unreachable!("into")){
-                        //             RuntimeValue::Function{ arguments_t, ..} => Some(arguments_t),
-                        //             v => {
-                        //                 self.data_stack.push(v);
-                        //                 None
-                        //             }
-                        //         }
-                        //     } else {
-                        //         ret_error!(StackUnderflow)
-                        //     };
-                        //     match block{
-                        //         RuntimeValue::Block(b) if args.is_some()=> {
-                        //             self.elements.insert(var_name, value::Element::Function {
-                        //                 arguments_t: args.unwrap_or_else(|| unreachable!("into block")),
-                        //                 return_t: vec![],
-                        //                 block: b
-                        //             });
-                        //         }
-                        //         other => {
-                        //             self.elements.insert(var_name, value::Element::Var(other));
-                        //         }
-                        //     }
-                        // }
                     }
                 }
                 Token::Swap => {
@@ -643,6 +615,30 @@ impl PVM {
                     let t = self.data_stack.pop().unwrap_or_else(|| unreachable!("typeof"));
                     self.data_stack.push(RuntimeValue::Type(t.get_type()));
                 }
+                Token::Take => {
+                    let var_name_opt = frame.next();
+                    let var_name: String = match var_name_opt {
+                        Some(Token::UnquotedLit(s)) => s.to_string(),
+                        other => ret_error!(UnexpectedToken, [UnquotedLit], other),
+                    };
+
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    match self.elements.remove(&var_name){
+                        Some(Element::Var(runtime_value) )=> self.data_stack.push(runtime_value),
+                        Some(Element::Function { arguments_t: args_types, block, return_t: return_types }) => {
+                            self.data_stack.push(RuntimeValue::Function {
+                                arguments_t: args_types,
+                                return_t: return_types,
+                                block
+                            })
+                        }
+                        _ => ret_error!(UndeclaredObject { t: "variable", name: var_name })
+                    }
+                }
+                Token::Delete => todo!(),
             }
             self.call_stack.push(frame);
 

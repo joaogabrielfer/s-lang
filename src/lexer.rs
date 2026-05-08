@@ -6,7 +6,7 @@ pub enum Token{
     Push, Pop, Drop, ReadLine, ReadLineB, Clear,
     Add, Sub, Mul, Div, Neg, Dup,
     Len, SplitB,
-    Into,
+    Into, Take, Delete,
     AsIntB,
     Swap, Rot, Over, Roll, Pick,
     Eq, Gt, Lt,
@@ -71,6 +71,8 @@ impl Token {
             Token::CloseSquare    => "CloseSquare",
             Token::TypeLit(_)     => "TypeLit",
             Token::TypeOf         => "TypeOf",
+            Token::Take           => "Take",
+            Token::Delete         => "Delete",
         }
     }
 }
@@ -210,6 +212,8 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "neg"       => Token::Neg,
                     "dup"       => Token::Dup,
                     "into"      => Token::Into,
+                    "take"      => Token::Take,
+                    "delete"    => Token::Delete,
                     "as_intb"   => Token::AsIntB,
                     "swap"      => Token::Swap,
                     "len"       => Token::Len,
