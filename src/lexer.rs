@@ -3,7 +3,8 @@ use crate::value::{RuntimeValueT, get_type_from_str};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token{
-    Push, Pop, Drop, ReadLine, ReadLineB, Clear,
+    Push, Drop, Clear,
+    SysOpen, SysClose, SysRead, SysWrite,
     Add, Sub, Mul, Div, Neg, Dup,
     Len, SplitB,
     Into, Take, Delete,
@@ -26,10 +27,7 @@ impl Token {
     pub fn type_name(&self) -> &'static str {
         match self {
             Token::Push           => "Push",
-            Token::Pop            => "Pop",
             Token::Drop           => "Drop",
-            Token::ReadLine       => "ReadLine",
-            Token::ReadLineB      => "ReadLineB",
             Token::Clear          => "Clear",
             Token::Add            => "Add",
             Token::Sub            => "Sub",
@@ -73,6 +71,10 @@ impl Token {
             Token::TypeOf         => "TypeOf",
             Token::Take           => "Take",
             Token::Delete         => "Delete",
+            Token::SysOpen        => "SysOpen",
+            Token::SysClose       => "SysClose",
+            Token::SysRead        => "SysRead",
+            Token::SysWrite       => "SysWrite",
         }
     }
 }
@@ -200,10 +202,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
 
                 let token = match word.as_str() {
                     "push"      => Token::Push,
-                    "pop"       => Token::Pop,
                     "drop"      => Token::Drop,
-                    "readline"  => Token::ReadLine,
-                    "readlineb" => Token::ReadLineB,
                     "clear"     => Token::Clear,
                     "add"       => Token::Add,
                     "sub"       => Token::Sub,
@@ -236,6 +235,10 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "eval"      => Token::Eval,
                     "ret"       => Token::Ret,
                     "include"   => Token::Include,
+                    "sys-open"  => Token::SysOpen,
+                    "sys-close" => Token::SysClose,
+                    "sys-read"  => Token::SysRead,
+                    "sys-write" => Token::SysWrite,
                     "call"  => {
                         while let Some(&wc) = chars.peek() {
                             if wc.is_whitespace() { chars.next(); } else { break; }

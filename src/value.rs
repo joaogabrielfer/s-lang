@@ -1,10 +1,11 @@
-use std::{collections::HashMap, fmt::Display, rc::Rc};
+use std::{collections::HashMap, fmt::Display, fs::File, rc::Rc};
 use crate::lexer::Token;
 
-pub struct PVM{
+pub struct PVM {
     pub data_stack: Vec<RuntimeValue>,
     pub call_stack: Vec<CallFrame>,
-    pub elements: HashMap<String, Element>
+    pub elements: HashMap<String, Element>,
+    pub file_index: Vec<FileDescriptor>,
 }
 
 impl PVM {
@@ -12,9 +13,18 @@ impl PVM {
         Self {
             data_stack: vec![],
             call_stack: vec![],
-            elements: HashMap::new()
+            elements: HashMap::new(),
+            file_index: vec![FileDescriptor::Stdin, FileDescriptor::Stdout, FileDescriptor::Stderr]
         }
     }
+}
+
+pub enum FileDescriptor {
+    Stdin,
+    Stdout,
+    Stderr,
+    DiskFile(File),
+    Empty,
 }
 
 #[derive(Clone, Debug)]

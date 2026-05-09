@@ -22,21 +22,30 @@
 	push "%"
 	splitb
 	if {
-		pop
+		print
 		swap
-		pop
+		print
 		call printf
 	} else {
 		push "\n"
-		pop
-		pop
+		print
+		print
 	}
 } into printf
 
 (@any) {
-	pop
+	push 1
+	swap
+	sys-write
+	push 1
 	push "\n"
-	pop
+	sys-write
+} into println
+
+(@any) {
+	push 1
+	swap
+	sys-write
 } into print
 
 (@string @int) {
@@ -55,24 +64,8 @@
 	}
 } into repeat
 
-;;
-fun readfile {
-	into var path
-	push 0
-	call __readfile
-}
-
-fun __readfile {
+;; recebe o fd como argumento;;
+(@int) {
 	push 1
-	add
-	dup path
-	over
-	readlineb
-	not if {
-		drop
-		ret
-	}
-	swap
-	call __readfile
-}
-;;
+	sys-read
+} into read-char

@@ -38,9 +38,6 @@ fn main() -> Result<(), Box<dyn Error>>{
                     print_stack(&pvm.data_stack);
                 }
                 _ => {
-                    if let Some(f) = pvm.call_stack.last() && let Some(tk) = f.instructions.last() && *tk == Token::Pop{
-                        println!()
-                    }
                     print_stack(&pvm.data_stack);
                 }
             }

@@ -1,5 +1,5 @@
 use std::fs::{File, read_to_string};
-use std::io::{BufRead, BufReader};
+use std::io::{Read, Write};
 use std::process::exit;
 use std::error::Error;
 use std::rc::Rc;
@@ -52,7 +52,7 @@ impl PVM {
                             Some(Token::TypeLit(t)) => self.data_stack.push(RuntimeValue::Type(t.clone())),
                             Some(Token::QuotedLit(s)) => {
                                 let trimmed = s.trim_matches('\"').to_string();
-                                self.data_stack.push(RuntimeValue::String(Rc::new(trimmed)));
+                                self.data_stack.push(RuntimeValue::String(Rc::new(unescape_string(trimmed.as_str()))));
                             }
                             Some(Token::UnquotedLit(s)) => {
                                 if self.elements.contains_key(s) {
@@ -78,7 +78,7 @@ impl PVM {
                                         Some(Token::TypeLit(t)) => list.push(RuntimeValue::Type(t.clone())),
                                         Some(Token::QuotedLit(s)) => {
                                             let trimmed = s.trim_matches('\"').to_string();
-                                            list.push(RuntimeValue::String(Rc::new(trimmed)));
+                                            list.push(RuntimeValue::String(Rc::new(unescape_string(trimmed.as_str()))));
                                         }
                                         other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit, NumberLit], other)
                                     }
@@ -135,16 +135,6 @@ impl PVM {
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a / b),
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
-                    }
-                }
-                Token::Pop => {
-                    if self.data_stack.len() <= frame.frame_pointer{
-                        ret_error!(StackUnderflow)
-                    }
-                    let p = self.data_stack.pop().unwrap_or_else(|| unreachable!("pop"));
-                    match p {
-                        RuntimeValue::String(s) if *s == "\\n" => println!(),
-                        _ => print!("{p}"),
                     }
                 }
                 Token::Drop => {
@@ -417,8 +407,8 @@ impl PVM {
                     let result = source_str.split_once(&pattern.to_string());
                     match result{
                         Some((left, right)) =>{
-                            self.data_stack.push(RuntimeValue::String(Rc::new(right.to_string())));
-                            self.data_stack.push(RuntimeValue::String(Rc::new(left.to_string())));
+                            self.data_stack.push(RuntimeValue::String(Rc::new(unescape_string(right))));
+                            self.data_stack.push(RuntimeValue::String(Rc::new(unescape_string(left))));
                             self.data_stack.push(RuntimeValue::Bool(true))
                         }
                         None => {
@@ -456,60 +446,6 @@ impl PVM {
                         other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit], other)
                     }
                 }
-                Token::ReadLine => {
-                    if self.data_stack.len() - frame.frame_pointer < 2{
-                        ret_error!(StackUnderflow)
-                    }
-
-                    let line_num: usize = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
-                        RuntimeValue::Int(x) if x > 0 => x as usize,
-                        RuntimeValue::Int(x) => ret_error!(IndexOutOfRange, x),
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![other])
-                    };
-                    let path = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
-                        RuntimeValue::String(s) => s,
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::String(Rc::new("".to_string()))], vec![other])
-                    };
-
-                    let file = File::open((*path).clone())?;
-                    let reader = BufReader::new(file);
-
-                    if let Some(line) = reader.lines().nth(line_num - 1){
-                        match line {
-                            Ok(l) => self.data_stack.push(RuntimeValue::String(Rc::new(l))),
-                            _ => ret_error!(LineOutOfRange)
-                        }
-                    } else {
-                        ret_error!(LineOutOfRange)
-                    }
-                }
-                Token::ReadLineB => {
-                    if self.data_stack.len() - frame.frame_pointer < 2{
-                        self.data_stack.push(RuntimeValue::Bool(false));
-                        return Ok(Flow::Next);
-                    }
-
-                    let line_num: usize = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
-                        RuntimeValue::Int(x) if x > 0 => x as usize,
-                        RuntimeValue::Int(x) => ret_error!(IndexOutOfRange, x),
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0)], vec![other])
-                    };
-                    let path = match self.data_stack.pop().unwrap_or_else(|| unreachable!("readline")){
-                        RuntimeValue::String(s) => s,
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::String(Rc::new("".to_string()))], vec![other])
-                    };
-
-                    let file = File::open((*path).clone())?;
-                    let reader = BufReader::new(file);
-
-                    match reader.lines().nth(line_num - 1){
-                        Some(Ok(l)) => {
-                            self.data_stack.push(RuntimeValue::String(Rc::new(l)));
-                            self.data_stack.push(RuntimeValue::Bool(true));
-                        }
-                        _ => self.data_stack.push(RuntimeValue::Bool(false))
-                    }
-                }
                 Token::AsIntB => {
                     if self.data_stack.len() <= frame.frame_pointer{
                         ret_error!(StackUnderflow)
@@ -534,7 +470,7 @@ impl PVM {
                             self.data_stack.push(RuntimeValue::Int(i));
                             self.data_stack.push(RuntimeValue::Bool(true));
                         }
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), RuntimeValue::String(Rc::new("".to_string()))], vec![other])
+                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), default_runtime_string()], vec![other])
                     };
                 }
                 Token::Clear => {
@@ -639,6 +575,98 @@ impl PVM {
                     }
                 }
                 Token::Delete => todo!(),
+                Token::SysOpen => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let path = match self.data_stack.pop().unwrap_or_else(|| unreachable!("sysopen")){
+                        RuntimeValue::String(s) => s,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_string()], vec![other])
+                    };
+
+                    let fd = File::open(path.to_string())?;
+                    let runtime_fd = self.file_index.len();
+
+                    self.file_index.push(FileDescriptor::DiskFile(fd));
+                    self.data_stack.push(RuntimeValue::Int(runtime_fd as i64));
+                }
+                Token::SysClose => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let runtime_fd = match self.data_stack.pop().unwrap_or_else(|| unreachable!("sysopen")){
+                        RuntimeValue::Int(i) => i,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_int()], vec![other])
+                    };
+
+                    if self.file_index.len() < runtime_fd as usize{
+                        todo!("Return error for invalid file descriptor")
+                    }
+
+                    drop(self.file_index.remove(runtime_fd as usize));
+                }
+                Token::SysRead => {
+                    if self.data_stack.len() - frame.frame_pointer < 2{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let num_bytes = match self.data_stack.pop().unwrap_or_else(|| unreachable!("sysopen")){
+                        RuntimeValue::Int(i) => i,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_int()], vec![other])
+                    };
+
+                    let runtime_fd = match self.data_stack.pop().unwrap_or_else(|| unreachable!("sysopen")){
+                        RuntimeValue::Int(i) => i,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_int()], vec![other])
+                    };
+
+                    if self.file_index.len() < runtime_fd as usize{
+                        todo!("Return error for invalid file descriptor")
+                    }
+
+                    let mut read_bytes = vec![0u8; num_bytes as usize];
+                    match &mut self.file_index[runtime_fd as usize]{
+                        FileDescriptor::Stdin => {
+                            _ = std::io::stdin().read(&mut read_bytes)?;
+                        }
+                        FileDescriptor::Stdout => todo!("throw bad fd error"),
+                        FileDescriptor::Stderr => todo!("throw bad fd error"),
+                        FileDescriptor::DiskFile(file) => {
+                            _ = file.read(&mut read_bytes)?;
+                        }
+                        FileDescriptor::Empty => unreachable!("sys-read"),
+                    };
+                    self.data_stack.push(RuntimeValue::String(Rc::new(unescape_string(str::from_utf8(read_bytes.as_ref())?))));
+
+
+
+                }
+                Token::SysWrite => {
+                    if self.data_stack.len() - frame.frame_pointer < 2{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let content = self.data_stack.pop().unwrap_or_else(|| unreachable!("sysopen"));
+
+                    let runtime_fd = match self.data_stack.pop().unwrap_or_else(|| unreachable!("sysopen")){
+                        RuntimeValue::Int(i) => i,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_int()], vec![other])
+                    };
+
+                    if self.file_index.len() < runtime_fd as usize{
+                        todo!("Return error for invalid file descriptor")
+                    }
+
+                    match &mut self.file_index[runtime_fd as usize]{
+                        FileDescriptor::Stdin => todo!("throw bad fd error"),
+                        FileDescriptor::Stdout => std::io::stdout().write_all(content.to_string().as_bytes())?,
+                        FileDescriptor::Stderr => std::io::stderr().write_all(content.to_string().as_bytes())?,
+                        FileDescriptor::DiskFile(file) => file.write_all(content.to_string().as_bytes())?,
+                        FileDescriptor::Empty => unreachable!("sys-read"),
+                    };
+                }
             }
             self.call_stack.push(frame);
 
@@ -802,4 +830,34 @@ fn collect_tokens_into_types(frame: &mut CallFrame) -> Result<Vec<RuntimeValueT>
         }
     };
     Ok(types_vec)
+}
+
+fn unescape_string(raw: &str) -> String {
+    let mut result = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(next_c) = chars.next() {
+                match next_c {
+                    'n' => result.push('\n'),
+                    'r' => result.push('\r'),
+                    't' => result.push('\t'),
+                    '\\' => result.push('\\'),
+                    '"' => result.push('"'),
+                    '0' => result.push('\0'),
+                    _ => {
+                        result.push('\\');
+                        result.push(next_c);
+                    }
+                }
+            } else {
+                result.push('\\');
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
