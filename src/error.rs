@@ -75,17 +75,11 @@ pub enum LangError{
         got: Vec<RuntimeValue>,
     },
     IndexOutOfRange(i64),
-    LineOutOfRange,
-    // ParseError(String),
     StackIndexOutOfRange {
         op: String,
         index: usize,
         stack_len: usize,
     },
-    // RedeclarationObject{
-    //     t: String,
-    //     name: String,
-    // },
     UndeclaredObject{
         t: String,
         name: String,
@@ -111,7 +105,6 @@ impl std::fmt::Display for LangError{
 
                 write!(f, "Expected token '{:?}' got '{:?}'", type_names, got)
             },
-            // Self::RedeclarationObject{t, name} => write!(f, "Trying to redeclare {t} {name}"),
             Self::UndeclaredObject{t, name} => write!(f, "Undeclared {t} {name}"),
             Self::UnexpectedTypes { exp, got } => {
                 let exp_type_names: Vec<&str> = exp
@@ -125,8 +118,6 @@ impl std::fmt::Display for LangError{
                 write!(f, "Expected {:?}, got {:?}", exp_type_names, got_type_names)
             }
             Self::IndexOutOfRange(i) => write!(f, "Index out of range: {i}"),
-            Self::LineOutOfRange => write!(f, "Line out of range"),
-            // Self::ParseError(s) => write!(f, "Could not parse '{s}'"),
             Self::StackIndexOutOfRange { op, index, stack_len } => write!(f, "Cannot {op}: index {index} out of range for stack of length {stack_len}"),
             Self::UnknownType(t) => write!(f, "Unknown type '{}'", t),
         }

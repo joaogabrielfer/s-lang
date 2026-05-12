@@ -17,6 +17,10 @@ pub enum Token{
     OpenSquare, CloseSquare,
     If, Else,
     And, Or, Not,
+    When,
+    Pipe,
+    Fallback,
+    RangeOp,
     ElementCall(String), Eval,
     TypeLit(RuntimeValueT), TypeOf,
     BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i64),
@@ -57,6 +61,10 @@ impl Token {
             Token::And            => "And",
             Token::Or             => "Or",
             Token::Not            => "Not",
+            Token::When           => "When",
+            Token::Pipe           => "Pipe",
+            Token::Fallback       => "Fallback",
+            Token::RangeOp        => "RangeOp",
             Token::ElementCall(_) => "ElementCall",
             Token::Eval           => "Eval",
             Token::BoolLit(_)     => "BoolLit",
@@ -193,6 +201,11 @@ pub fn tokenize(content: String) -> Vec<Token> {
                         }
                         let rt_t = get_type_from_str(t.as_str());
                         tokens.push(Token::TypeLit(RuntimeValueT::Variadic(Box::new(rt_t))));
+                    } else if chars.peek().is_some_and(|c| *c == '<') {
+                        chars.next();
+                        tokens.push(Token::RangeOp);
+                    } else {
+                        tokens.push(Token::Fallback);
                     }
                 }
             }
@@ -200,7 +213,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                 let mut word = String::new();
 
                 while let Some(&nc) = chars.peek() {
-                    if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' || nc == '[' || nc == ']'{
+                    if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' || nc == '[' || nc == ']' || nc == '.'{
                         break;
                     }
                     word.push(nc);
@@ -223,7 +236,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "as-@int"   => Token::AsIntB,
                     "swap"      => Token::Swap,
                     "len"       => Token::Len,
-                    "stack-len" => Token::Len,
+                    "stack-len" => Token::StackLen,
                     "rot"       => Token::Rot,
                     "over"      => Token::Over,
                     "roll"      => Token::Roll,
@@ -234,6 +247,8 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "gt"        => Token::Gt,
                     "if"        => Token::If,
                     "else"      => Token::Else,
+                    "when"      => Token::When,
+                    "|"         => Token::Pipe,
                     "and"       => Token::And,
                     "or"        => Token::Or,
                     "not"       => Token::Not,

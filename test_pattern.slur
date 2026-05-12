@@ -1,0 +1,16 @@
+include io
+[
+    ( 0 ) { push "zero" println }
+    ( 1 ) { push "one" println }
+    ( @int ) when { dup push 10 lt } { push "single digit int" println }
+    ( @int ) { push "int" println }
+    ( "a" ) { push "it's a!" println }
+    ( ..@any ) { push "fallback" println }
+] into match_test
+
+push 0 match_test
+push 1 match_test
+push 2 match_test
+push 100 match_test
+push "a" match_test
+push "test" match_test

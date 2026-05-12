@@ -18,7 +18,7 @@
 	push sep drop
 } into splitall
 
-(..@any) {
+(..@any @string) {
 	push "%"
 	splitb
 	if {

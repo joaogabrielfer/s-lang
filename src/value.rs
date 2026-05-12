@@ -31,8 +31,8 @@ pub enum FileDescriptor {
 pub enum Element{
     Var(RuntimeValue),
     Function {
-        arguments_t: Vec<RuntimeValueT>,
-        return_t: Vec<RuntimeValueT>,
+        patterns: Vec<Pattern>,
+        guard: Option<Vec<Token>>,
         block: Vec<Token>,
     }
 }
@@ -54,46 +54,123 @@ impl CallFrame {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub enum Pattern {
+    Type(RuntimeValueT),
+    Literal(RuntimeValue),
+    Range { start: i64, end: i64, inclusive: bool },
+    List(Vec<Pattern>),
+    Destructure(Box<Pattern>, Box<Pattern>),
+    Fallback,
+    Variadic(Box<Pattern>),
+}
+
+impl Pattern {
+    pub fn check(&self, value: &RuntimeValue) -> bool {
+        match self {
+            Pattern::Type(t) => value.compare_type(t.clone()),
+            Pattern::Literal(lit) => value == lit,
+            Pattern::Range { start, end, inclusive } => {
+                if let RuntimeValue::Int(n) = value {
+                    if *inclusive { n >= start && n <= end } else { n >= start && n < end }
+                } else {
+                    false
+                }
+            }
+            Pattern::Fallback => true,
+            Pattern::List(pat_list) => {
+                if let RuntimeValue::List(val_list) = value {
+                    if pat_list.len() != val_list.len() {
+                        return false;
+                    }
+                    for (p, v) in pat_list.iter().zip(val_list.iter()) {
+                        if !p.check(v) {
+                            return false;
+                        }
+                    }
+                    true
+                } else if let RuntimeValue::String(s) = value {
+                    if pat_list.len() == 1 {
+                        return pat_list[0].check(value);
+                    }
+                    let chars: Vec<char> = s.chars().collect();
+                    if pat_list.len() != chars.len() { return false; }
+                    for (p, c) in pat_list.iter().zip(chars.iter()) {
+                        if !p.check(&RuntimeValue::Char(*c)) { return false; }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            Pattern::Destructure(head_pat, tail_pat) => {
+                if let RuntimeValue::List(val_list) = value {
+                    if val_list.is_empty() { return false; }
+                    let head_val = &val_list[0];
+                    let tail_val = RuntimeValue::List(val_list[1..].to_vec());
+                    head_pat.check(head_val) && tail_pat.check(&tail_val)
+                } else if let RuntimeValue::String(s) = value {
+                    if s.is_empty() { return false; }
+                    let mut chars = s.chars();
+                    let head_char = chars.next().unwrap();
+                    let tail_str = chars.collect::<String>();
+                    let head_val = RuntimeValue::Char(head_char);
+                    let tail_val = RuntimeValue::String(Rc::new(tail_str));
+                    head_pat.check(&head_val) && tail_pat.check(&tail_val)
+                } else {
+                    false
+                }
+            }
+            Pattern::Variadic(_) => true, // Variadic checks are handled by the call frame resolver
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub enum RuntimeValue {
     Int(i64),
     Bool(bool),
     String(Rc<String>),
+    Char(char),
     Block(Vec<Token>),
     Function{
-        arguments_t: Vec<RuntimeValueT>,
-        return_t: Vec<RuntimeValueT>,
+        patterns: Vec<Pattern>,
+        guard: Option<Vec<Token>>,
         block: Vec<Token>,
     },
     List(Vec<RuntimeValue>),
     Type(RuntimeValueT),
 }
 
-pub fn default_runtime_int() -> RuntimeValue{
+pub fn _default_runtime_int() -> RuntimeValue{
     RuntimeValue::Int(0)
 }
 
-pub fn default_runtime_bool() -> RuntimeValue{
+pub fn _default_runtime_bool() -> RuntimeValue{
     RuntimeValue::Bool(false)
 }
 
-pub fn default_runtime_string() -> RuntimeValue{
+pub fn _default_runtime_string() -> RuntimeValue{
     RuntimeValue::String(Rc::new("".to_string()))
 }
 
-pub fn default_runtime_block() -> RuntimeValue{
+pub fn _default_runtime_char() -> RuntimeValue{
+    RuntimeValue::Char('\0')
+}
+
+pub fn _default_runtime_block() -> RuntimeValue{
     RuntimeValue::Block(vec![])
 }
 
-pub fn default_runtime_function() -> RuntimeValue{
-    RuntimeValue::Function{arguments_t: vec![],return_t: vec![], block:vec![]}
+pub fn _default_runtime_function() -> RuntimeValue{
+    RuntimeValue::Function{patterns: vec![], guard: None, block:vec![]}
 }
 
-pub fn default_runtime_list() -> RuntimeValue{
+pub fn _default_runtime_list() -> RuntimeValue{
     RuntimeValue::Block(vec![])
 }
 
-pub fn default_runtime_type() -> RuntimeValue{
+pub fn _default_runtime_type() -> RuntimeValue{
     RuntimeValue::Type(RuntimeValueT::Type)
 }
 
@@ -102,6 +179,7 @@ pub enum RuntimeValueT {
     Int,
     Bool,
     String,
+    Char,
     Block,
     Function,
     Any,
@@ -117,6 +195,7 @@ impl Display for RuntimeValueT {
             RuntimeValueT::Int         => write!(f, "int"),
             RuntimeValueT::Bool        => write!(f, "bool" ),
             RuntimeValueT::String      => write!(f, "string" ),
+            RuntimeValueT::Char        => write!(f, "char" ),
             RuntimeValueT::Block       => write!(f, "block" ),
             RuntimeValueT::Function    => write!(f, "function" ),
             RuntimeValueT::Any         => write!(f, "any" ),
@@ -128,47 +207,15 @@ impl Display for RuntimeValueT {
     }
 }
 
-impl RuntimeValueT {
-    pub fn to_runtimevalue(&self) -> RuntimeValue {
-        match self {
-            RuntimeValueT::Int         => default_runtime_int(),
-            RuntimeValueT::Bool        => default_runtime_bool(),
-            RuntimeValueT::String      => default_runtime_string(),
-            RuntimeValueT::Block       => default_runtime_block(),
-            RuntimeValueT::Function    => default_runtime_function(),
-            RuntimeValueT::Any         => panic!("Tried to convert `any` type to its RuntimeValue correspondent"),
-            RuntimeValueT::Variadic(_) => panic!("Tried to convert `variadic` type to its RuntimeValue correspondent"),
-            RuntimeValueT::Unknown     => panic!("Tried to convert `unknown` type to its RuntimeValue correspondent"),
-            RuntimeValueT::List(_)     => default_runtime_list(),
-            RuntimeValueT::Type        => default_runtime_type(),
-        }
-    }
-}
-
 pub fn get_type_from_str(s: &str) -> RuntimeValueT{
     match s {
         "string"   => RuntimeValueT::String,
+        "char"     => RuntimeValueT::Char,
         "int"      => RuntimeValueT::Int,
         "bool"     => RuntimeValueT::Bool,
         "function" => RuntimeValueT::Function,
         "any"      => RuntimeValueT::Any,
         "type"     => RuntimeValueT::Type,
-        // "list"     => {
-        //     let mut types: Vec<RuntimeValueT> = vec![];
-        //     s.to_string()
-        //         .trim_matches(|c| c == '(' || c == ')')
-        //         .split_whitespace()
-        //         .for_each(|word| match word {
-        //             "string"   => types.push(RuntimeValueT::String),
-        //             "int"      => types.push(RuntimeValueT::Int),
-        //             "bool"     => types.push(RuntimeValueT::Bool),
-        //             "function" => types.push(RuntimeValueT::Function),
-        //             "any"      => types.push(RuntimeValueT::Any),
-        //             "type"     => types.push(RuntimeValueT::Type),
-        //             _          => types.push(RuntimeValueT::Unknown),
-        //         });
-        //     RuntimeValueT::List(types)
-        // }
         _ => RuntimeValueT::Unknown,
     }
 }
@@ -179,6 +226,7 @@ impl RuntimeValue {
             RuntimeValue::Int(_)       => "int",
             RuntimeValue::Bool(_)      => "bool",
             RuntimeValue::String(_)    => "str",
+            RuntimeValue::Char(_)      => "char",
             RuntimeValue::Block(_)     => "block",
             RuntimeValue::Function{..} => "function",
             RuntimeValue::List(_)      => "list",
@@ -191,6 +239,7 @@ impl RuntimeValue {
             RuntimeValue::Int(_)       => t == RuntimeValueT::Int,
             RuntimeValue::Bool(_)      => t == RuntimeValueT::Bool,
             RuntimeValue::String(_)    => t == RuntimeValueT::String,
+            RuntimeValue::Char(_)      => t == RuntimeValueT::Char,
             RuntimeValue::Block(_)     => t == RuntimeValueT::Block,
             RuntimeValue::Function{..} => t == RuntimeValueT::Function,
             RuntimeValue::List(l)      => t == RuntimeValueT::List(l.iter().map(|t| t.get_type()).collect()),
@@ -203,6 +252,7 @@ impl RuntimeValue {
             RuntimeValue::Int(_)          => RuntimeValueT::Int,
             RuntimeValue::Bool(_)         => RuntimeValueT::Bool,
             RuntimeValue::String(_)       => RuntimeValueT::String,
+            RuntimeValue::Char(_)         => RuntimeValueT::Char,
             RuntimeValue::Block(_)        => RuntimeValueT::Block,
             RuntimeValue::Function { .. } => RuntimeValueT::Function,
             RuntimeValue::List(_)         => RuntimeValueT::List(vec![]),
@@ -216,6 +266,7 @@ impl PartialOrd for RuntimeValue {
         match (self, other) {
             (Self::Int(a), Self::Int(b)) => a.partial_cmp(b),
             (Self::Bool(a), Self::Bool(b)) => a.partial_cmp(b),
+            (Self::Char(a), Self::Char(b)) => a.partial_cmp(b),
             _ => None,
         }
     }
@@ -226,9 +277,10 @@ impl std::fmt::Display for RuntimeValue {
         match self{
             RuntimeValue::Int(n) => write!(f, "{n}"),
             RuntimeValue::String(s) => write!(f, "{s}"),
+            RuntimeValue::Char(c) => write!(f, "'{c}'"),
             RuntimeValue::Bool(b) => write!(f, "{b}"),
             RuntimeValue::Block(b) => write!(f, "{:?}", b),
-            RuntimeValue::Function { arguments_t, return_t, block } => write!(f, "({:?}) -> {:?} {{{:?}}}", arguments_t, return_t, block),
+            RuntimeValue::Function { patterns, guard, block } => write!(f, "({:?}) when {:?} {{{:?}}}", patterns, guard, block),
             RuntimeValue::List(v) => write!(f, "{:?}", v),
             RuntimeValue::Type(t) => write!(f, "@{t}"),
         }
