@@ -396,7 +396,18 @@ impl PVM {
                         }
                     }
                 }
-                Token::Len => self.data_stack.push(RuntimeValue::Int(self.data_stack.len().try_into().unwrap())),
+                Token::Len => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let list = match self.data_stack.pop().unwrap_or_else(|| unreachable!("len")){
+                        RuntimeValue::List(l) => l,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_list()], vec![other] ),
+                    };
+                    self.data_stack.push(RuntimeValue::Int(list.len() as i64));
+                }
+                Token::StackLen => self.data_stack.push(RuntimeValue::Int(self.data_stack.len().try_into().unwrap())),
                 Token::SplitB => {
                     if self.data_stack.len() - frame.frame_pointer < 2{
                         ret_error!(StackUnderflow)
@@ -712,24 +723,55 @@ impl PVM {
                         other => ret_error!(UnexpectedTypes, [default_runtime_list()], vec![other] ),
                     };
 
-                    l.push(r);
+                    l.insert(0, r);
                     self.data_stack.push(RuntimeValue::List(l));
                 }
-                Token::Quote => todo!(),
                 Token::Uncon => {
                     if self.data_stack.len() - frame.frame_pointer < 1{
                         ret_error!(StackUnderflow)
                     }
 
-                    let r = self.data_stack.pop().unwrap_or_else(|| unreachable!("uncon"));
-
-                    let mut l = match self.data_stack.pop().unwrap_or_else(|| unreachable!("uncon")){
-                        RuntimeValue::List(list) => list,
+                    let mut list = match self.data_stack.pop().unwrap_or_else(|| unreachable!("uncon")){
+                        RuntimeValue::List(l) => l,
                         other => ret_error!(UnexpectedTypes, [default_runtime_list()], vec![other] ),
                     };
 
-                    l.push(r);
-                    self.data_stack.push(RuntimeValue::List(l));
+                    if list.is_empty(){
+                        todo!("stack len insufficient") // TODO: improve error handling
+                    }
+
+                    let value = list.remove(0);
+                    self.data_stack.push(RuntimeValue::List(list));
+                    self.data_stack.push(value);
+                }
+                Token::Quote => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let value = self.data_stack.pop().unwrap_or_else(|| unreachable!("uncon"));
+
+                    self.data_stack.push(RuntimeValue::List(vec![value]));
+                }
+                Token::At => {
+                    if self.data_stack.len() - frame.frame_pointer < 2{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let index = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::Int(n) => n,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_int()], vec![other] ),
+                    };
+                    let list = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::List(l) => l,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_list()], vec![other] ),
+                    };
+
+                    if index as usize >= list.len(){
+                        ret_error!(IndexOutOfRange, index)
+                    }
+
+                    self.data_stack.push(list[index as usize].clone());
                 }
             }
             self.call_stack.push(frame);

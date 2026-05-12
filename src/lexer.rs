@@ -6,10 +6,10 @@ pub enum Token{
     Push, Drop, Clear,
     SysOpen, SysClose, SysRead, SysWrite,
     Add, Sub, Mul, Div, Neg, Dup,
-    Len, SplitB,
+    StackLen, Len, SplitB,
     Into, Take, Delete,
     AsIntB,
-    Concat, Cons, Uncon, Quote,
+    Concat, Cons, Uncon, Quote, At,
     Swap, Rot, Over, Roll, Pick,
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
@@ -80,6 +80,8 @@ impl Token {
             Token::Cons           => "Cons",
             Token::Uncon          => "Uncon",
             Token::Quote          => "Quote",
+            Token::At             => "At",
+            Token::StackLen       => "StackLen",
         }
     }
 }
@@ -221,6 +223,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "as-@int"   => Token::AsIntB,
                     "swap"      => Token::Swap,
                     "len"       => Token::Len,
+                    "stack-len" => Token::Len,
                     "rot"       => Token::Rot,
                     "over"      => Token::Over,
                     "roll"      => Token::Roll,
@@ -248,6 +251,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "cons"      => Token::Cons,
                     "uncon"     => Token::Uncon,
                     "quote"     => Token::Quote,
+                    "at"        => Token::At,
                     "call"  => {
                         while let Some(&wc) = chars.peek() {
                             if wc.is_whitespace() { chars.next(); } else { break; }
