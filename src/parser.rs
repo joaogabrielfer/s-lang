@@ -97,8 +97,8 @@ impl PVM {
                     if self.data_stack.len() - frame.frame_pointer < 2{
                         ret_error!(StackUnderflow)
                     }
-                    let a = self.data_stack.pop().unwrap();
                     let b = self.data_stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a + b),
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
@@ -108,8 +108,8 @@ impl PVM {
                     if self.data_stack.len() - frame.frame_pointer < 2{
                         ret_error!(StackUnderflow)
                     }
-                    let a = self.data_stack.pop().unwrap();
                     let b = self.data_stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a * b),
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
@@ -119,8 +119,8 @@ impl PVM {
                     if self.data_stack.len() - frame.frame_pointer < 2{
                         ret_error!(StackUnderflow)
                     }
-                    let a = self.data_stack.pop().unwrap();
                     let b = self.data_stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a - b),
                         (type1, type2) => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
@@ -130,8 +130,8 @@ impl PVM {
                     if self.data_stack.len() - frame.frame_pointer < 2{
                         ret_error!(StackUnderflow)
                     }
-                    let a = self.data_stack.pop().unwrap();
                     let b = self.data_stack.pop().unwrap();
+                    let a = self.data_stack.pop().unwrap();
                     match (a.clone(), b.clone()){
                         (RuntimeValue::Int(_), RuntimeValue::Int(_)) => self.data_stack.push(a / b),
                         (type1, type2) => ret_error!(UnexpectedTypes,[RuntimeValue::Int(0), RuntimeValue::Int(0)], vec![type1, type2])
@@ -558,10 +558,6 @@ impl PVM {
                         other => ret_error!(UnexpectedToken, [UnquotedLit], other),
                     };
 
-                    if self.data_stack.len() - frame.frame_pointer < 1{
-                        ret_error!(StackUnderflow)
-                    }
-
                     match self.elements.remove(&var_name){
                         Some(Element::Var(runtime_value) )=> self.data_stack.push(runtime_value),
                         Some(Element::Function { arguments_t: args_types, block, return_t: return_types }) => {
@@ -574,7 +570,17 @@ impl PVM {
                         _ => ret_error!(UndeclaredObject { t: "variable", name: var_name })
                     }
                 }
-                Token::Delete => todo!(),
+                Token::Delete => {
+                    let var_name_opt = frame.next();
+                    let var_name: String = match var_name_opt {
+                        Some(Token::UnquotedLit(s)) => s.to_string(),
+                        other => ret_error!(UnexpectedToken, [UnquotedLit], other),
+                    };
+
+                    if self.elements.remove(&var_name).is_none(){
+                       ret_error!(UndeclaredObject { t: "variable", name: var_name })
+                    }
+                }
                 Token::SysOpen => {
                     if self.data_stack.len() - frame.frame_pointer < 1{
                         ret_error!(StackUnderflow)
@@ -585,11 +591,12 @@ impl PVM {
                         other => ret_error!(UnexpectedTypes, [default_runtime_string()], vec![other])
                     };
 
-                    let fd = File::open(path.to_string())?;
+                    let fd = File::open(std::path::Path::new(path.to_string().as_str()))?;
                     let runtime_fd = self.file_index.len();
 
                     self.file_index.push(FileDescriptor::DiskFile(fd));
                     self.data_stack.push(RuntimeValue::Int(runtime_fd as i64));
+
                 }
                 Token::SysClose => {
                     if self.data_stack.len() - frame.frame_pointer < 1{
@@ -666,6 +673,63 @@ impl PVM {
                         FileDescriptor::DiskFile(file) => file.write_all(content.to_string().as_bytes())?,
                         FileDescriptor::Empty => unreachable!("sys-read"),
                     };
+                }
+                Token::Concat => {
+                    if self.data_stack.len() - frame.frame_pointer < 2{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!()){
+                        RuntimeValue::List(mut r) => {
+                            match self.data_stack.pop().unwrap_or_else(|| unreachable!()){
+                                RuntimeValue::List(mut l) => {
+                                    l.append(& mut r);
+                                    self.data_stack.push(RuntimeValue::List(l));
+                                },
+                                other => ret_error!(UnexpectedTypes, [default_runtime_list()], vec![other] ),
+                            };
+                        }
+                        RuntimeValue::String(r) => {
+                            match self.data_stack.pop().unwrap_or_else(|| unreachable!()){
+                                RuntimeValue::String(l) => {
+                                    self.data_stack.push(RuntimeValue::String(Rc::new(format!("{l}{r}"))));
+                                },
+                                other => ret_error!(UnexpectedTypes, [default_runtime_string()], vec![other] ),
+                            };
+                        }
+                        other => ret_error!(UnexpectedTypes, [default_runtime_list(), default_runtime_string()], vec![other] ),
+                    };
+                }
+                Token::Cons => {
+                    if self.data_stack.len() - frame.frame_pointer < 2{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let r = self.data_stack.pop().unwrap_or_else(|| unreachable!("cons"));
+
+                    let mut l = match self.data_stack.pop().unwrap_or_else(|| unreachable!("cons")){
+                        RuntimeValue::List(list) => list,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_list()], vec![other] ),
+                    };
+
+                    l.push(r);
+                    self.data_stack.push(RuntimeValue::List(l));
+                }
+                Token::Quote => todo!(),
+                Token::Uncon => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let r = self.data_stack.pop().unwrap_or_else(|| unreachable!("uncon"));
+
+                    let mut l = match self.data_stack.pop().unwrap_or_else(|| unreachable!("uncon")){
+                        RuntimeValue::List(list) => list,
+                        other => ret_error!(UnexpectedTypes, [default_runtime_list()], vec![other] ),
+                    };
+
+                    l.push(r);
+                    self.data_stack.push(RuntimeValue::List(l));
                 }
             }
             self.call_stack.push(frame);

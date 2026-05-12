@@ -9,6 +9,7 @@ pub enum Token{
     Len, SplitB,
     Into, Take, Delete,
     AsIntB,
+    Concat, Cons, Uncon, Quote,
     Swap, Rot, Over, Roll, Pick,
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
@@ -75,6 +76,10 @@ impl Token {
             Token::SysClose       => "SysClose",
             Token::SysRead        => "SysRead",
             Token::SysWrite       => "SysWrite",
+            Token::Concat         => "Concat",
+            Token::Cons           => "Cons",
+            Token::Uncon          => "Uncon",
+            Token::Quote          => "Quote",
         }
     }
 }
@@ -193,7 +198,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                 let mut word = String::new();
 
                 while let Some(&nc) = chars.peek() {
-                    if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' {
+                    if nc.is_whitespace() || nc == '{' || nc == '}' || nc == '"' || nc == ';' || nc == '(' || nc == ')' || nc == '[' || nc == ']'{
                         break;
                     }
                     word.push(nc);
@@ -213,7 +218,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "into"      => Token::Into,
                     "take"      => Token::Take,
                     "delete"    => Token::Delete,
-                    "as_intb"   => Token::AsIntB,
+                    "as-@int"   => Token::AsIntB,
                     "swap"      => Token::Swap,
                     "len"       => Token::Len,
                     "rot"       => Token::Rot,
@@ -239,6 +244,10 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "sys-close" => Token::SysClose,
                     "sys-read"  => Token::SysRead,
                     "sys-write" => Token::SysWrite,
+                    "concat"    => Token::Concat,
+                    "cons"      => Token::Cons,
+                    "uncon"     => Token::Uncon,
+                    "quote"     => Token::Quote,
                     "call"  => {
                         while let Some(&wc) = chars.peek() {
                             if wc.is_whitespace() { chars.next(); } else { break; }
@@ -246,7 +255,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
 
                         let mut fun_name = String::new();
                         while let Some(&nc) = chars.peek() {
-                            if nc.is_whitespace() || nc == '{' || nc == '}' { break; }
+                            if nc.is_whitespace() || nc == '{' || nc == '}' || nc == ']'{ break; }
                             fun_name.push(nc);
                             chars.next();
                         }

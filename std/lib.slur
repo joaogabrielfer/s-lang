@@ -22,3 +22,22 @@
 	}
 	swap over eval
 } into map_stack
+
+(..@any) {
+	len i sub pick
+	len i push 1 add sub pick
+	lt if {
+		len i sub roll
+	} else {
+		len i push 1 add sub roll
+	}
+	take i
+	push 1 add
+	dup
+	len push 1 sub
+	lt if {
+		into i
+	} else {
+		drop push 0 into i
+	}
+} into sort_one

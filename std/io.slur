@@ -36,9 +36,8 @@
 (@any) {
 	push 1
 	swap
-	sys-write
-	push 1
 	push "\n"
+	concat
 	sys-write
 } into println
 
@@ -54,12 +53,12 @@
 	eq
 	not
 	if {
-		over pop
+		over print
 		push 1
-		swap sub
+		sub
 		call repeat
 	} else {
-		push "\n" pop
+		push "\n" print
 		drop
 	}
 } into repeat
