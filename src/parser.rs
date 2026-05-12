@@ -55,7 +55,9 @@ impl PVM {
                             match frame.peek() {
                                 Some(&Token::NumberLit(_))
                                     | Some(&Token::QuotedLit(_))
-                                    | Some(&Token::TypeLit(_)) => { }
+                                    | Some(&Token::TypeLit(_))
+                                    | Some(&Token::CloseSquare)
+                                    | Some(&Token::OpenSquare)=> { }
                                 _ => break
                             }
                         }
@@ -82,6 +84,22 @@ impl PVM {
                                 } else {
                                     ret_error!(UndeclaredObject { t: "variable", name: s })
                                 }
+                            }
+                            Some(Token::OpenSquare) => {
+                                let mut list: Vec<RuntimeValue> = vec![];
+                                while frame.peek() != Some(&Token::CloseSquare){
+                                    match frame.next() {
+                                        Some(Token::NumberLit(n)) => list.push(RuntimeValue::Int(*n)),
+                                        Some(Token::TypeLit(t)) => list.push(RuntimeValue::Type(t.clone())),
+                                        Some(Token::QuotedLit(s)) => {
+                                            let trimmed = s.trim_matches('\"').to_string();
+                                            list.push(RuntimeValue::String(Rc::new(unescape_string(trimmed.as_str()))));
+                                        }
+                                        other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit, NumberLit], other)
+                                    }
+                                }
+                                frame.next();
+                                self.data_stack.push(RuntimeValue::List(list));
                             }
                             other => {
                                 ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit, NumberLit], other)
@@ -459,7 +477,7 @@ impl PVM {
                         other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit], other)
                     }
                 }
-                Token::AsIntB => {
+                Token::ToInt => {
                     if self.data_stack.len() <= frame.frame_pointer{
                         ret_error!(StackUnderflow)
                     }
@@ -481,6 +499,60 @@ impl PVM {
                         }
                         RuntimeValue::Int(i) =>{
                             self.data_stack.push(RuntimeValue::Int(i));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), _default_runtime_string()], vec![other])
+                    };
+                }
+                Token::ToString => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("tostring")){
+                        RuntimeValue::Int(i) => {
+                            self.data_stack.push(RuntimeValue::String(Rc::new(i.to_string())));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        RuntimeValue::Bool(b) => if b {
+                            self.data_stack.push(RuntimeValue::String(Rc::new(b.to_string())));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        RuntimeValue::String(s) =>{
+                            self.data_stack.push(RuntimeValue::String(s));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        RuntimeValue::Type(t) =>{
+                            self.data_stack.push(RuntimeValue::String(Rc::new(t.to_string())));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), _default_runtime_string()], vec![other])
+                    };
+                }
+                Token::ToBool => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("tostring")){
+                        RuntimeValue::Int(i) => {
+                            if i != 0{
+                                self.data_stack.push(RuntimeValue::Bool(true));
+                            } else {
+                                self.data_stack.push(RuntimeValue::Bool(false));
+                            }
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        RuntimeValue::Bool(b) => if b {
+                            self.data_stack.push(RuntimeValue::Bool(b));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        RuntimeValue::String(s) =>{
+                            self.data_stack.push(RuntimeValue::Bool(!s.is_empty()));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
+                        RuntimeValue::List(l) =>{
+                            self.data_stack.push(RuntimeValue::Bool(!l.is_empty()));
                             self.data_stack.push(RuntimeValue::Bool(true));
                         }
                         other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), _default_runtime_string()], vec![other])
@@ -804,15 +876,6 @@ impl PVM {
                         other => ret_error!(UnexpectedTypes, [_default_runtime_list(), _default_runtime_string()], vec![other] ),
                     };
                 }
-                Token::Quote => {
-                    if self.data_stack.len() - frame.frame_pointer < 1{
-                        ret_error!(StackUnderflow)
-                    }
-
-                    let value = self.data_stack.pop().unwrap_or_else(|| unreachable!("uncon"));
-
-                    self.data_stack.push(RuntimeValue::List(vec![value]));
-                }
                 Token::At => {
                     if self.data_stack.len() - frame.frame_pointer < 2{
                         ret_error!(StackUnderflow)
@@ -832,6 +895,74 @@ impl PVM {
                     }
 
                     self.data_stack.push(list[index as usize].clone());
+                }
+                Token::Explode => {
+                    if self.data_stack.len() - frame.frame_pointer < 1 {
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let list = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::List(l) => l,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                    };
+
+                    for e in list {
+                        self.data_stack.push(e)
+                    }
+                }
+                Token::Pack => {
+                    if self.data_stack.len() - frame.frame_pointer < 2 {
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let n = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::Int(n) => n,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_int()], vec![other] ),
+                    };
+
+                    let mut list = Vec::<RuntimeValue>::new();
+                    for _ in 0..n{
+                        match self.data_stack.pop(){
+                            Some(v) => list.push(v),
+                            None => ret_error!(StackUnderflow)
+                        }
+                    }
+
+                    list.reverse();
+                    self.data_stack.push(RuntimeValue::List(list));
+                }
+                Token::First => {
+                    if self.data_stack.len() - frame.frame_pointer < 2{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let n = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::Int(n) => n,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_int()], vec![other] ),
+                    };
+                    let mut list = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::List(l) => l,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                    };
+
+                    list.truncate(n as usize);
+                    self.data_stack.push(RuntimeValue::List(list))
+                }
+                Token::Last => {
+                    if self.data_stack.len() - frame.frame_pointer < 2{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    let n = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::Int(n) => n,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_int()], vec![other] ),
+                    };
+                    let mut list = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::List(l) => l,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                    };
+
+                    self.data_stack.push(RuntimeValue::List(list.split_off(n as usize)))
                 }
             }
             self.call_stack.push(frame);
@@ -929,9 +1060,33 @@ impl PVM {
                 match p {
                     Pattern::List(pat_list) => {
                         if let RuntimeValue::List(val_list) = v {
+                            // Lenient case: if pattern is a single type, push the list itself
+                            if pat_list.len() == 1 && matches!(pat_list[0], Pattern::Type(_)) && val_list.len() != 1 {
+                                return vec![v.clone()];
+                            }
+
                             let mut res = vec![];
-                            for (p_item, v_item) in pat_list.iter().zip(val_list.iter()) {
-                                res.extend(expand_pat(p_item, v_item));
+                            let variadic_pos = pat_list.iter().position(|p| matches!(p, Pattern::Variadic(_)));
+                            if let Some(v_idx) = variadic_pos {
+                                let fixed_before = v_idx;
+                                let fixed_after = pat_list.len() - 1 - v_idx;
+                                let val_after_start = val_list.len() - fixed_after;
+
+                                for i in 0..fixed_before {
+                                    res.extend(expand_pat(&pat_list[i], &val_list[i]));
+                                }
+
+                                // Group variadic elements into a list
+                                let variadic_elements = val_list[fixed_before..val_after_start].to_vec();
+                                res.push(RuntimeValue::List(variadic_elements));
+
+                                for i in 0..fixed_after {
+                                    res.extend(expand_pat(&pat_list[v_idx + 1 + i], &val_list[val_after_start + i]));
+                                }
+                            } else {
+                                for (p_item, v_item) in pat_list.iter().zip(val_list.iter()) {
+                                    res.extend(expand_pat(p_item, v_item));
+                                }
                             }
                             res
                         } else if let RuntimeValue::String(s) = v {
@@ -1121,6 +1276,7 @@ fn parse_single_pattern(frame: &mut CallFrame, first_tk: Token) -> Result<Patter
         Token::Fallback => Ok(Pattern::Fallback),
         Token::OpenSquare => {
             let mut list = vec![];
+            let mut destructure = None;
             while frame.ip < frame.instructions.len() {
                 let tk = frame.instructions[frame.ip].clone();
                 frame.ip += 1;
@@ -1128,18 +1284,25 @@ fn parse_single_pattern(frame: &mut CallFrame, first_tk: Token) -> Result<Patter
                     Token::CloseSquare => break,
                     Token::CloseParen => break,
                     Token::Pipe => {
-                        let head = list.pop().ok_or_else(|| LangError::UnknownType("Pipe with no head".to_string()))?;
                         if frame.ip < frame.instructions.len() {
                             let next_tk = frame.instructions[frame.ip].clone();
                             frame.ip += 1;
                             let tail = parse_single_pattern(frame, next_tk)?;
-                            list.push(Pattern::Destructure(Box::new(head), Box::new(tail)));
+                            let mut current = tail;
+                            while let Some(head) = list.pop() {
+                                current = Pattern::Destructure(Box::new(head), Box::new(current));
+                            }
+                            destructure = Some(current);
                         }
                     }
                     _ => list.push(parse_single_pattern(frame, tk)?),
                 }
             }
-            Ok(Pattern::List(list))
+            if let Some(d) = destructure {
+                Ok(d)
+            } else {
+                Ok(Pattern::List(list))
+            }
         }
         other => ret_error!(UnknownType, format!("{:?}", other))
     }

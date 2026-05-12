@@ -80,15 +80,43 @@ impl Pattern {
             Pattern::Fallback => true,
             Pattern::List(pat_list) => {
                 if let RuntimeValue::List(val_list) = value {
-                    if pat_list.len() != val_list.len() {
-                        return false;
-                    }
-                    for (p, v) in pat_list.iter().zip(val_list.iter()) {
-                        if !p.check(v) {
+                    let variadic_pos = pat_list.iter().position(|p| matches!(p, Pattern::Variadic(_)));
+                    if let Some(v_idx) = variadic_pos {
+                        let fixed_before = v_idx;
+                        let fixed_after = pat_list.len() - 1 - v_idx;
+                        if val_list.len() < fixed_before + fixed_after {
                             return false;
                         }
+                        for i in 0..fixed_before {
+                            if !pat_list[i].check(&val_list[i]) { return false; }
+                        }
+                        let val_after_start = val_list.len() - fixed_after;
+                        for i in 0..fixed_after {
+                            if !pat_list[v_idx + 1 + i].check(&val_list[val_after_start + i]) { return false; }
+                        }
+                        let inner_pat = if let Pattern::Variadic(inner) = &pat_list[v_idx] { inner } else { unreachable!() };
+                        for i in fixed_before..val_after_start {
+                            if !inner_pat.check(&val_list[i]) { return false; }
+                        }
+                        true
+                    } else {
+                        if pat_list.len() == 1 && matches!(pat_list[0], Pattern::Type(_)) && val_list.len() != 1 {
+                             let t = &pat_list[0];
+                             for v in val_list {
+                                 if !t.check(v) { return false; }
+                             }
+                             return true;
+                        }
+                        if pat_list.len() != val_list.len() {
+                            return false;
+                        }
+                        for (p, v) in pat_list.iter().zip(val_list.iter()) {
+                            if !p.check(v) {
+                                return false;
+                            }
+                        }
+                        true
                     }
-                    true
                 } else if let RuntimeValue::String(s) = value {
                     if pat_list.len() == 1 {
                         return pat_list[0].check(value);
