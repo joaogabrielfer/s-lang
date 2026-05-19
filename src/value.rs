@@ -305,7 +305,7 @@ impl std::fmt::Display for RuntimeValue {
         match self{
             RuntimeValue::Int(n) => write!(f, "{n}"),
             RuntimeValue::String(s) => write!(f, "{s}"),
-            RuntimeValue::Char(c) => write!(f, "'{c}'"),
+            RuntimeValue::Char(c) => write!(f, "{c}"),
             RuntimeValue::Bool(b) => write!(f, "{b}"),
             RuntimeValue::Block(b) => write!(f, "{:?}", b),
             RuntimeValue::Function { patterns, guard, block } => write!(f, "({:?}) when {:?} {{{:?}}}", patterns, guard, block),

@@ -55,6 +55,7 @@ impl PVM {
                             match frame.peek() {
                                 Some(&Token::NumberLit(_))
                                     | Some(&Token::QuotedLit(_))
+                                    | Some(&Token::CharLit(_))
                                     | Some(&Token::TypeLit(_))
                                     | Some(&Token::CloseSquare)
                                     | Some(&Token::OpenSquare)=> { }
@@ -69,6 +70,7 @@ impl PVM {
                                 let trimmed = s.trim_matches('\"').to_string();
                                 self.data_stack.push(RuntimeValue::String(Rc::new(unescape_string(trimmed.as_str()))));
                             }
+                            Some(Token::CharLit(c)) => self.data_stack.push(RuntimeValue::Char(*c)),
                             Some(Token::UnquotedLit(s)) => {
                                 if self.elements.contains_key(s) {
                                     match self.elements[s].clone(){
@@ -177,6 +179,7 @@ impl PVM {
                 }
                 Token::NumberLit(num) => ret_error!(InvalidToken, Token::NumberLit(num)),
                 Token::QuotedLit(s) => ret_error!(InvalidToken, Token::QuotedLit(s.to_string())),
+                Token::CharLit(c) => ret_error!(InvalidToken, Token::CharLit(c)),
                 Token::UnquotedLit(s) => {
                     if !self.elements.contains_key(&s){
                         ret_error!(UndeclaredObject { t: "element", name: s })
@@ -421,33 +424,17 @@ impl PVM {
                         ret_error!(StackUnderflow)
                     }
 
-                    let list = match self.data_stack.pop().unwrap_or_else(|| unreachable!("len")){
-                        RuntimeValue::List(l) => l,
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("len")){
+                        RuntimeValue::List(l) => {
+                            self.data_stack.push(RuntimeValue::Int(l.len() as i64));
+                        }
+                        RuntimeValue::String(s) => {
+                            self.data_stack.push(RuntimeValue::Int(s.len() as i64));
+                        }
                         other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
                     };
-                    self.data_stack.push(RuntimeValue::Int(list.len() as i64));
                 }
                 Token::StackLen => self.data_stack.push(RuntimeValue::Int(self.data_stack.len().try_into().unwrap())),
-                Token::SplitB => {
-                    if self.data_stack.len() - frame.frame_pointer < 2{
-                        ret_error!(StackUnderflow)
-                    }
-                    let pattern = self.data_stack.pop().unwrap_or_else(|| unreachable!("split"));
-                    let source = self.data_stack.pop().unwrap_or_else(|| unreachable!("split"));
-                    let source_str = source.to_string();
-                    let result = source_str.split_once(&pattern.to_string());
-                    match result{
-                        Some((left, right)) =>{
-                            self.data_stack.push(RuntimeValue::String(Rc::new(unescape_string(right))));
-                            self.data_stack.push(RuntimeValue::String(Rc::new(unescape_string(left))));
-                            self.data_stack.push(RuntimeValue::Bool(true))
-                        }
-                        None => {
-                            self.data_stack.push(source);
-                            self.data_stack.push(RuntimeValue::Bool(false));
-                        }
-                    }
-                }
                 Token::Ret => return Ok(Flow::Return),
                 Token::Include => {
                     match frame.next(){
@@ -475,6 +462,24 @@ impl PVM {
                             }
                         }
                         other => ret_error!(UnexpectedToken,[QuotedLit, UnquotedLit], other)
+                    }
+                }
+                Token::ToChar => {
+                    if self.data_stack.len() - frame.frame_pointer < 1{
+                        ret_error!(StackUnderflow)
+                    }
+
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("tochar")){
+                        RuntimeValue::Char(c) => self.data_stack.push(RuntimeValue::Char(c)),
+                        RuntimeValue::String(s) => {
+                            if s.len() != 1 {
+                                self.data_stack.push(RuntimeValue::Bool(false));
+                            } else {
+                                self.data_stack.push(RuntimeValue::Char((*s).chars().nth(0).unwrap_or_else(|| unreachable!())));
+                                self.data_stack.push(RuntimeValue::Bool(true));
+                            }
+                        }
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_string(), _default_runtime_char()], vec![other])
                     }
                 }
                 Token::ToInt => {
@@ -963,6 +968,59 @@ impl PVM {
                     };
 
                     self.data_stack.push(RuntimeValue::List(list.split_off(n as usize)))
+                }
+                Token::SubStrB => {
+                    if self.data_stack.len() - frame.frame_pointer < 3{
+                        ret_error!(StackUnderflow)
+                    }
+                    let idx = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::Int(n) => n,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_int()], vec![other] ),
+                    };
+                    let length = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::Int(n) => n,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_int()], vec![other] ),
+                    };
+                    let rt_str = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::String(s) => s,
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                    };
+
+                    if (idx + length) as usize > rt_str.len(){
+                        ret_error!(IndexOutOfRange, idx + length)
+                    }
+
+                    self.data_stack.push(RuntimeValue::String(Rc::new(rt_str.as_str()[idx as usize..(idx + length) as usize].to_string())));
+                }
+                Token::FindB => {
+                    match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                        RuntimeValue::Char(c) => {
+                            let rt_str = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                                RuntimeValue::String(s) => s,
+                                other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                            };
+                            if let Some(n) = rt_str.find(c){
+                                self.data_stack.push(RuntimeValue::Int(n as i64));
+                                self.data_stack.push(RuntimeValue::Bool(true));
+                            } else {
+                                self.data_stack.push(RuntimeValue::Bool(false));
+                            }
+                        }
+                        RuntimeValue::String(s) => {
+                            let rt_str = match self.data_stack.pop().unwrap_or_else(|| unreachable!("at")){
+                                RuntimeValue::String(s) => s,
+                                other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                            };
+                            if let Some(n) = rt_str.find(&*s){
+                                self.data_stack.push(RuntimeValue::Int(n as i64));
+                                self.data_stack.push(RuntimeValue::Bool(true));
+                            } else {
+                                self.data_stack.push(RuntimeValue::Bool(false));
+                            }
+                        }
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                    }
+
                 }
             }
             self.call_stack.push(frame);

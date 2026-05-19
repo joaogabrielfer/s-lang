@@ -84,6 +84,7 @@ fn print_stack(stack: &[RuntimeValue]){
         .for_each(|(i, x)| {
             match x{
                 RuntimeValue::String(s) => print!("\"{s}\""),
+                RuntimeValue::Char(c) => print!("\'{c}\'"),
                 x => print!("{x}")
             }
             if i != stack.len() - 1{

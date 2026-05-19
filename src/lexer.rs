@@ -6,10 +6,11 @@ pub enum Token{
     Push, Drop, Clear,
     SysOpen, SysClose, SysRead, SysWrite,
     Add, Sub, Mul, Div, Neg, Dup,
-    StackLen, Len, SplitB,
+    StackLen, Len,
     Into, Take, Delete,
-    ToInt, ToString, ToBool,
+    ToInt, ToString, ToBool, ToChar,
     Concat, Cons, Uncon, At, Explode, Pack, First, Last,
+    FindB, SubStrB,
     Swap, Rot, Over, Roll, Pick,
     Eq, Gt, Lt,
     OpenCurly, CloseCurly,
@@ -23,7 +24,7 @@ pub enum Token{
     RangeOp,
     ElementCall(String), Eval,
     TypeLit(RuntimeValueT), TypeOf,
-    BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i64),
+    BoolLit(bool), QuotedLit(String), UnquotedLit(String), NumberLit(i64), CharLit(char),
     Quit, Ret,
     Include,
 }
@@ -41,9 +42,9 @@ impl Token {
             Token::Neg            => "Neg",
             Token::Dup            => "Dup",
             Token::Len            => "Len",
-            Token::SplitB         => "SplitB",
             Token::Into           => "Into",
             Token::ToInt          => "ToInt",
+            Token::ToChar         => "ToChar",
             Token::Swap           => "Swap",
             Token::Rot            => "Rot",
             Token::Over           => "Over",
@@ -95,6 +96,9 @@ impl Token {
             Token::Last           => "Last",
             Token::ToString       => "ToString",
             Token::ToBool         => "ToBoll",
+            Token::FindB          => "FindB",
+            Token::SubStrB        => "SubStrB",
+            Token::CharLit(_)     => "CharLit",
         }
     }
 }
@@ -159,6 +163,19 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     string_val.push(cc);
                 }
                 tokens.push(Token::QuotedLit(string_val));
+            }
+            '\'' => {
+                chars.next();
+                match chars.next(){
+                    Some(c) => {
+                        if chars.next().is_some_and(|nc| nc == '\''){
+                            tokens.push(Token::CharLit(c));
+                        } else {
+                            panic!("tokenizing error: could not parse char lit") // improve here too
+                        }
+                    }
+                    None => panic!("tokenizing error: could not parse char lit") //TODO: improve error handling in tokenizer
+                }
             }
             '#' => {
                 chars.next();
@@ -239,6 +256,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "take"      => Token::Take,
                     "delete"    => Token::Delete,
                     "int?"      => Token::ToInt,
+                    "char?"     => Token::ToChar,
                     "string?"   => Token::ToString,
                     "bool?"     => Token::ToBool,
                     "swap"      => Token::Swap,
@@ -248,7 +266,8 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "over"      => Token::Over,
                     "roll"      => Token::Roll,
                     "pick"      => Token::Pick,
-                    "splitb"    => Token::SplitB,
+                    "find?"     => Token::FindB,
+                    "substr?"   => Token::SubStrB,
                     "eq"        => Token::Eq,
                     "lt"        => Token::Lt,
                     "gt"        => Token::Gt,

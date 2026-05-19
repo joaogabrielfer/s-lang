@@ -26,6 +26,12 @@
 } into as-int
 
 (@any) {
+	char? if { } else {
+		push "Could not cast into char" println
+	}
+} into as-char
+
+(@any) {
 	string? if { } else {
 		push "Could not cast into string" println
 	}
@@ -56,6 +62,19 @@
 		push "Could not check if it is empty" println
 	}
 ] into empty?
+
+[
+	(@string @char){
+		find? if { } else {
+			push "Could not find pattern in string" println
+		}
+	}
+	(@string @string){
+		find? if { } else {
+			push "Could not find pattern in string" println
+		}
+	}
+] into find
 
 ;; a fn -- fn(x) a ;;
 (@any @function) {
@@ -100,9 +119,32 @@
 	unrot swap
 } into tri
 
-(@list @item) {
-	quote concat
-} into append
+[
+	(@string @char) { concat }
+	(@string @string) { concat }
+	([..@any] @any) { quote concat }
+] into append
+
+(@string @int) {
+	push 1
+	swap
+	substr
+	as-char
+} into getchar
+
+[
+	(@string @char) {
+		over swap find
+		2dup
+		push 0 substr
+		rot rot push 1 add swap
+		dup len push 3 sub
+		rot substr
+	}
+	(@string @string) {
+
+	}
+] into split
 
 [
 	;; map a list ;;
