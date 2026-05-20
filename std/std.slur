@@ -197,11 +197,49 @@
 	}
 ]into map
 
+;;
 [
-	([..@any]){
-		push 0 into i
-	}
-] into scan ;; todo ;;
+    ( [..@any] @any @any ) {
+        swap
+        push 1 pack
+        swap
+
+        [
+            ( [] [..@any] @any @any ) {
+                drop
+                drop
+                swap
+                drop
+            }
+
+            ( [ @any | [..@any] ] [..@any] @any @any ) {
+                push 2 pick
+                push 0 at
+
+                push 4 pick
+
+                push 3 pick
+
+                match
+                push 4 roll
+                drop
+                push 3 roll
+                swap
+                cons
+                rot rot
+
+                dup match
+            }
+        ]
+
+        dup match
+    }
+
+    ( .. ) {
+        push "Error: scan arguments mismatch!" println
+    }
+] into scan
+;;
 
 [
 	( [@int | [..@int] ] ) {

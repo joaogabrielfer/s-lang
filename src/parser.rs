@@ -214,8 +214,6 @@ impl PVM {
                             match var {
                                 RuntimeValue::Function { patterns, guard, block  } => self.elements.insert(var_name, Element::Function{patterns, guard, block}),
                                 RuntimeValue::List(ref l) if l.iter().all(|x| matches!(x, RuntimeValue::Function{..})) => {
-                                    // Store as a single composite Var that behaves like a function, or just keep it as Var and let UnquotedLit handle it.
-                                    // Actually, it's better to store it as Element::Var and let UnquotedLit evaluate it if it's a list of functions!
                                     self.elements.insert(var_name, Element::Var(var))
                                 }
                                 _ => self.elements.insert(var_name, Element::Var(var)),
@@ -1035,7 +1033,7 @@ impl PVM {
                         other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
                     };
 
-                    self.execute_function_or_list(f)?;
+                    pending_call = self.execute_function_or_list(f)?;
                 }
             }
             self.call_stack.push(frame);

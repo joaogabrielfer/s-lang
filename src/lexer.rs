@@ -143,6 +143,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     chars.next();
                     let mut last_was_semi = false;
                     for cc in &mut chars {
+                        if cc == '\n' { break }
                         if cc == ';' {
                             if last_was_semi {
                                 break;
