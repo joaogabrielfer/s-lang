@@ -120,6 +120,15 @@
 } into tri
 
 [
+	(@int @int) {
+		2dup gt
+		if { swap } else { }
+		drop
+	}
+
+] into min
+
+[
 	(@string @char) { concat }
 	(@string @string) { concat }
 	([..@any] @any) { quote concat }
@@ -142,7 +151,12 @@
 		rot substr
 	}
 	(@string @string) {
-
+		over swap find
+		2dup
+		push 0 substr
+		rot rot push 1 add swap
+		dup len push 3 sub
+		rot substr
 	}
 ] into split
 
@@ -184,6 +198,12 @@
 ]into map
 
 [
+	([..@any]){
+		push 0 into i
+	}
+] into scan ;; todo ;;
+
+[
 	( [@int | [..@int] ] ) {
 		uncon swap
 		rot rot
@@ -216,7 +236,7 @@
 
     (@string) {
         push sep dup into sep
-		splitb
+		split
         if {
 			swap
             rot dup
@@ -233,7 +253,7 @@
 
 (..@any @string) {
 	push "%"
-	splitb
+	split
 	if {
 		print
 		swap
@@ -247,10 +267,15 @@
 (@any) {
 	push 1
 	swap
-	as-string
-	push "\n"
-	concat
-	sys-write
+	string?
+	if {
+		push "\n"
+		concat
+		sys-write
+	} else {
+		drop
+		push "Could not print element" println
+	}
 } into println
 
 (@any) {

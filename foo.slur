@@ -1,0 +1,13 @@
+include std
+
+push [ 1 2 3 4 5 6 7 8 9 10 ]
+(@int) { push 2 mul } map
+push 5 first
+println
+
+push [ 7 1 5 4 ]
+dup ;; arr1 arr1 ;;
+push min scan ;; arr1 arr_min;;
+sub ;; arr_diff ;;
+push -1 cons ;; arr_diff_w_def ;;
+max

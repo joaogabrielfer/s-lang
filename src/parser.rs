@@ -527,11 +527,15 @@ impl PVM {
                             self.data_stack.push(RuntimeValue::String(s));
                             self.data_stack.push(RuntimeValue::Bool(true));
                         }
+                        RuntimeValue::List(l) =>{
+                            self.data_stack.push(RuntimeValue::String(Rc::new(format!("{:?}", l))));
+                            self.data_stack.push(RuntimeValue::Bool(true));
+                        }
                         RuntimeValue::Type(t) =>{
                             self.data_stack.push(RuntimeValue::String(Rc::new(t.to_string())));
                             self.data_stack.push(RuntimeValue::Bool(true));
                         }
-                        other => ret_error!(UnexpectedTypes, [RuntimeValue::Int(0), RuntimeValue::Bool(false), _default_runtime_string()], vec![other])
+                        _ => self.data_stack.push(RuntimeValue::Bool(false)),
                     };
                 }
                 Token::ToBool => {
@@ -1021,6 +1025,17 @@ impl PVM {
                         other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
                     }
 
+                }
+                Token::Match => {
+                    if self.data_stack.len() - frame.frame_pointer < 1 {
+                        ret_error!(StackUnderflow)
+                    }
+                    let f: crate::RuntimeValue= match self.data_stack.pop().unwrap_or_else(|| unreachable!("match")){
+                        RuntimeValue::List(l) => RuntimeValue::List(l),
+                        other => ret_error!(UnexpectedTypes, [_default_runtime_list()], vec![other] ),
+                    };
+
+                    self.execute_function_or_list(f)?;
                 }
             }
             self.call_stack.push(frame);

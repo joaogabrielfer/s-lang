@@ -16,7 +16,7 @@ pub enum Token{
     OpenCurly, CloseCurly,
     OpenParen, CloseParen,
     OpenSquare, CloseSquare,
-    If, Else,
+    If, Else, Match,
     And, Or, Not,
     When,
     Pipe,
@@ -99,6 +99,7 @@ impl Token {
             Token::FindB          => "FindB",
             Token::SubStrB        => "SubStrB",
             Token::CharLit(_)     => "CharLit",
+            Token::Match          => "Match",
         }
     }
 }
@@ -296,6 +297,7 @@ pub fn tokenize(content: String) -> Vec<Token> {
                     "pack"      => Token::Pack,
                     "first"     => Token::First,
                     "last"      => Token::Last,
+                    "match"     => Token::Match,
                     "call"  => {
                         while let Some(&wc) = chars.peek() {
                             if wc.is_whitespace() { chars.next(); } else { break; }
